@@ -10,7 +10,11 @@ The goal is to learn from two signals at once: what real estate agents actually 
 
 ## Design
 
-The system runs on two clocks that share one Postgres database:
+![Overview: the AI writes 5 ad drafts, the human real estate agent keeps one, the ad goes live, results come back, and the system learns which drafts work](docs/overview.svg)
+
+The system runs on two clocks that share one Postgres database. In the detailed diagram below, **blue** is the online path (seconds), **amber** is the feedback path (days to weeks), and the **dashed red** link is the least certain one.
+
+![System design: online path, feedback path and the shared Postgres system of record](docs/architecture.svg)
 
 - **Online path (seconds).** Real estate agent's app → API service → job queue → generation worker → language model, with an optional reranker. The worker stores every AI draft with its display position and shuffle seed. The real estate agent keeps one draft, edits it, writes their own, or rejects all of them.
 - **Feedback path (days to weeks).** Importers pull daily stats from listing portals and inquiries from the CRM. A nightly export trains the reranker, which is then redeployed.
@@ -24,6 +28,8 @@ db/migrations/V1__initial_schema.sql   schema (first migration)
 tests/test_schema.sql                  constraint tests, rolled back after running
 docker-compose.yml                     local Postgres with the schema applied
 .env.example                           local settings template
+docs/overview.svg                      simple five-step loop
+docs/architecture.svg                  detailed system design
 ```
 
 ## Run locally

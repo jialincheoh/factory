@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="330" viewBox="0 0 860 330" role="img" aria-label="A loop: the AI writes five ad drafts, the human real estate agent keeps one, the ad goes live, results come back as clicks, inquiries and sales, and the system learns which drafts work, improving the next drafts.">
+  <title>Listing Ad Loop: overview</title>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+      <defs>
+        <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1f5fbf"/></marker>
+        <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#a0620a"/></marker>
+      </defs>
+      <g font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" text-anchor="middle" fill="#1b2129">
+        <rect x="20"  y="40" width="180" height="80" rx="10" fill="#f6f7f9" stroke="#1b2129"/>
+        <text x="110" y="74" font-size="17" font-weight="700">1. AI writes</text>
+        <text x="110" y="98" font-size="14" fill="#5b6573">5 ad drafts</text>
+
+        <rect x="340" y="40" width="180" height="80" rx="10" fill="#f6f7f9" stroke="#1b2129"/>
+        <text x="430" y="74" font-size="17" font-weight="700">2. Agent keeps one</text>
+        <text x="430" y="98" font-size="14" fill="#5b6573">human real estate agent</text>
+
+        <rect x="660" y="40" width="180" height="80" rx="10" fill="#f6f7f9" stroke="#1b2129"/>
+        <text x="750" y="74" font-size="17" font-weight="700">3. Ad goes live</text>
+        <text x="750" y="98" font-size="14" fill="#5b6573">on property portals</text>
+
+        <rect x="660" y="220" width="180" height="80" rx="10" fill="#f6f7f9" stroke="#1b2129"/>
+        <text x="750" y="254" font-size="17" font-weight="700">4. Results</text>
+        <text x="750" y="278" font-size="14" fill="#5b6573">clicks, inquiries, sales</text>
+
+        <rect x="20" y="220" width="180" height="80" rx="10" fill="#f6f7f9" stroke="#1b2129"/>
+        <text x="110" y="254" font-size="17" font-weight="700">5. Learn</text>
+        <text x="110" y="278" font-size="14" fill="#5b6573">which drafts work</text>
+
+        <ellipse cx="430" cy="260" rx="110" ry="34" fill="#f6f7f9" stroke="#1b2129" stroke-dasharray="4 3"/>
+        <text x="430" y="256" font-size="14" font-weight="700">Database</text>
+        <text x="430" y="275" font-size="12" fill="#5b6573">saves every step</text>
+      </g>
+      <g fill="none" stroke-width="2.2">
+        <line x1="200" y1="80" x2="336" y2="80" stroke="#1f5fbf" marker-end="url(#a)"/>
+        <line x1="520" y1="80" x2="656" y2="80" stroke="#1f5fbf" marker-end="url(#a)"/>
+        <line x1="750" y1="120" x2="750" y2="216" stroke="#1f5fbf" marker-end="url(#a)"/>
+        <line x1="660" y1="260" x2="544" y2="260" stroke="#a0620a" marker-end="url(#b)"/>
+        <line x1="320" y1="260" x2="204" y2="260" stroke="#a0620a" marker-end="url(#b)"/>
+        <line x1="110" y1="220" x2="110" y2="124" stroke="#a0620a" marker-end="url(#b)"/>
+      </g>
+      <g font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" text-anchor="middle">
+        <text x="268" y="70" fill="#1f5fbf">shows drafts</text>
+        <text x="588" y="70" fill="#1f5fbf">publish</text>
+        <text x="40" y="176" fill="#a0620a" text-anchor="start">better</text>
+        <text x="40" y="192" fill="#a0620a" text-anchor="start">drafts</text>
+      </g>
+    </svg>
