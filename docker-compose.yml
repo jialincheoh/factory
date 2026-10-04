@@ -1,0 +1,23 @@
+# Local Postgres with the schema applied.
+# Migrations in db/migrations run once, when the data volume is first created.
+# To start over: docker compose down -v && docker compose up -d
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-listing}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-listing-local-only}
+      POSTGRES_DB: ${POSTGRES_DB:-listing_ads}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+      - ./tests:/tests:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-listing} -d ${POSTGRES_DB:-listing_ads}"]
+      interval: 2s
+      retries: 30
+
+volumes:
+  pgdata:
