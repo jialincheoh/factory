@@ -79,24 +79,25 @@ CREATE TABLE published_ads (
   ad_id         UUID PRIMARY KEY,
   request_id    UUID REFERENCES generation_requests,  -- NULL = not from the system
   listing_id    UUID NOT NULL REFERENCES listings,
-  channel       TEXT NOT NULL,         -- PropertyGuru, Facebook, own site
+  channel       TEXT NOT NULL,         -- 'own_portal' today; other channels later
   published_at  TIMESTAMPTZ NOT NULL
 );
 
--- Append-only individual events (clicks, inquiries, viewings), never updated.
+-- Append-only events logged first-hand by our own property portal, never updated.
 -- No buyer names or contact details here; those stay in the CRM.
 CREATE TABLE ad_events (
   event_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   ad_id            UUID NOT NULL REFERENCES published_ads,
   event_type       TEXT NOT NULL
-                   CHECK (event_type IN ('click', 'inquiry', 'viewing')),
+                   CHECK (event_type IN ('impression', 'click', 'inquiry', 'viewing')),
   occurred_at      TIMESTAMPTZ NOT NULL,
-  source           TEXT NOT NULL,      -- portal API, manual entry
-  source_event_id  TEXT NOT NULL,      -- ID from the source system
+  source           TEXT NOT NULL,      -- 'portal' (logged first-hand) or 'manual'
+  source_event_id  TEXT NOT NULL,      -- event ID from the portal or manual log
   UNIQUE (source, source_event_id)     -- re-imports cannot double-count
 );
 
--- Daily totals, because portals usually report aggregates, not single impressions
+-- Daily rollups computed from ad_events, so dashboards and training
+-- do not scan every raw event. Recomputing a day upserts, never duplicates.
 CREATE TABLE ad_daily_stats (
   ad_id         UUID NOT NULL REFERENCES published_ads,
   stat_date     DATE NOT NULL,
