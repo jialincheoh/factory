@@ -12,14 +12,41 @@ The goal is to learn from two signals at once: what real estate agents actually 
 
 ![Overview: the AI writes 5 ad drafts, the human real estate agent keeps one, the ad goes live, results come back, and the system learns which drafts work](docs/overview.svg)
 
-The system runs on two clocks that share one Postgres database. In the detailed diagram below, **blue** is the online path (seconds), **amber** is the feedback path (days to weeks), and the **dashed red** link is the least certain one.
+The system runs on two clocks that share one Postgres database. In the detailed diagram below, **blue** is the online path (seconds) and **amber** is the feedback path (days to weeks).
 
 ![System design: online path, feedback path and the shared Postgres system of record](docs/architecture.svg)
 
 - **Online path (seconds).** Real estate agent's app → API service → job queue → generation worker → language model, with an optional reranker. The worker stores every AI draft with its display position and shuffle seed. The real estate agent keeps one draft, edits it, writes their own, or rejects all of them.
-- **Feedback path (days to weeks).** Ads are published on our own property portal, which logs views, clicks and inquiries first-hand. Phone inquiries are recorded in the CRM. A nightly export trains the reranker, which is then redeployed.
+- **Feedback path (days to weeks).** Ads are published on our own property portal, which logs views, clicks, inquiries and phone-number reveals first-hand. A nightly export trains the reranker, which is then redeployed.
 
 The reranker starts as random order on purpose, so the first months of data show position effects before any model shapes what real estate agents see.
+
+## How it works, in plain language
+
+The system is two loops that share one filing cabinet.
+
+### The fast loop (blue): seconds, while the real estate agent waits
+
+1. **Real estate agent:** a person opens the app and asks for ad ideas for a listing.
+2. **API service, the front desk:** receives the request. It also quietly decides which version of the system this person gets, the way a shop tests two window displays, and how the drafts will be shuffled.
+3. **Job queue, the waiting line:** writing ads takes a few seconds, so requests wait in line instead of freezing the app. If something fails, the job is retried.
+4. **Generation worker, the writer's assistant:** takes the next job and prepares the instructions for the AI.
+5. **LLM serving, the AI itself:** writes five different ad drafts.
+6. **Reranker, a judge (switched off at first):** later, it will score the drafts to predict which one the real estate agent will like. For now, drafts are shown in random order on purpose, to see whether real estate agents simply pick whatever appears first.
+7. **The real estate agent** sees the five drafts, then keeps one, edits it, writes their own, or rejects them all.
+8. **Publish:** the kept ad goes live on our own property portal.
+
+### The filing cabinet (middle): Postgres
+
+Everything is written down here: every draft, including the rejected ones, what the real estate agent chose, and how ads perform later. It is the single source of truth both loops share. Buyers' names and contact details are never stored here.
+
+### The slow loop (amber): days and weeks, learning from results
+
+1. **Our property portal:** records every buyer action on each ad as it happens: views, clicks, inquiries, and clicks to reveal the real estate agent's phone number. The number stays hidden until a buyer clicks, so phone interest is linked to the exact ad too.
+2. **Event logger, the record keeper:** files each action once. If the same action is reported twice, it is only counted once.
+3. **Analytics export:** every night, a copy of the data goes somewhere it can be studied without slowing down the app.
+4. **Train reranker, the learning step:** looks at which drafts real estate agents kept and which ads brought in inquiries and sales, and learns what a good draft looks like.
+5. **Deploy new version:** the improved judge is switched on in the fast loop, so future drafts get better.
 
 ## Repository layout
 
@@ -58,7 +85,7 @@ Migrations run only when the database volume is first created. To rebuild from s
 
 ## Open questions
 
-- **Attribution.** Inquiries made through the portal are linked to the ad the buyer was viewing. Buyers who phone the real estate agent directly are harder to trace; a tracking number per listing is one option.
+- **Phone reveals as a signal.** The real estate agent's phone number is hidden until a buyer clicks to reveal it, and each reveal is logged against the ad. A reveal shows interest but does not confirm that a call happened. Is that good enough, or should calls be confirmed later?
 - **Showing buyers different drafts.** Because we own the portal, different buyers could be shown different drafts of the same listing at random. That would test directly whether the draft the real estate agent kept is the one buyers respond to most. It needs the real estate agents' agreement and ethics approval first.
 - **Late outcomes.** A sale lands weeks after the ad. How should late events join back to the request, and should training wait for them?
 - **Model hosting.** Drafts for one listing share a long prompt. At this scale, is self-hosted serving (for example vLLM with prefix caching) worth it compared with an API?

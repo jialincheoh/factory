@@ -89,7 +89,7 @@ CREATE TABLE ad_events (
   event_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   ad_id            UUID NOT NULL REFERENCES published_ads,
   event_type       TEXT NOT NULL
-                   CHECK (event_type IN ('impression', 'click', 'inquiry', 'viewing')),
+                   CHECK (event_type IN ('impression', 'click', 'phone_reveal', 'inquiry', 'viewing')),
   occurred_at      TIMESTAMPTZ NOT NULL,
   source           TEXT NOT NULL,      -- 'portal' (logged first-hand) or 'manual'
   source_event_id  TEXT NOT NULL,      -- event ID from the portal or manual log
