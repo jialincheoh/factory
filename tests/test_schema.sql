@@ -8,7 +8,7 @@
 BEGIN;
 
 -- Sample data (made up; never use real clients here)
-INSERT INTO agents VALUES ('a0000000-0000-0000-0000-000000000001', 'Sample Agent', now());
+INSERT INTO real_estate_agents VALUES ('a0000000-0000-0000-0000-000000000001', 'Sample Real Estate Agent', now());
 INSERT INTO listings VALUES ('10000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'condo', 500000, now());
 INSERT INTO generation_requests VALUES
   ('b0000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'sample-model', 'v1', 'sample prompt', NULL, 42, now()),
@@ -18,11 +18,11 @@ INSERT INTO candidates (candidate_id, request_id, display_position, ad_text) VAL
   ('c0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000001', 2, 'Draft B'),
   ('c0000000-0000-0000-0000-000000000009', 'b0000000-0000-0000-0000-000000000002', 1, 'Draft from another request');
 
--- Listing pointing at an agent that does not exist
+-- Listing pointing at a real estate agent who does not exist
 DO $$ BEGIN
   INSERT INTO listings VALUES ('10000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-0000000000ff', 'condo', 1, now());
-  RAISE EXCEPTION 'FAIL: phantom agent was accepted';
-EXCEPTION WHEN foreign_key_violation THEN RAISE NOTICE 'pass: phantom agent rejected';
+  RAISE EXCEPTION 'FAIL: unknown real estate agent was accepted';
+EXCEPTION WHEN foreign_key_violation THEN RAISE NOTICE 'pass: unknown real estate agent rejected';
 END $$;
 
 -- Two drafts at the same display position

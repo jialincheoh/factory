@@ -3,9 +3,10 @@
 -- (Flyway naming shown); never edit this file after it has been applied.
 -- Later changes go in V2__..., V3__..., and so on.
 
--- One row per agent, so agent_id cannot point at a phantom agent
-CREATE TABLE agents (
-  agent_id      UUID PRIMARY KEY,
+-- One row per human real estate agent, so real_estate_agent_id cannot point
+-- at someone who does not exist. ("Agent" in this schema never means an AI agent.)
+CREATE TABLE real_estate_agents (
+  real_estate_agent_id UUID PRIMARY KEY,
   display_name  TEXT NOT NULL,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -13,17 +14,17 @@ CREATE TABLE agents (
 -- One row per listing
 CREATE TABLE listings (
   listing_id     UUID PRIMARY KEY,
-  agent_id       UUID NOT NULL REFERENCES agents,
+  real_estate_agent_id UUID NOT NULL REFERENCES real_estate_agents,
   property_type  TEXT,            -- condo, landed, etc.
   price_listed   NUMERIC,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- One row each time the agent asks for ad options
+-- One row each time a real estate agent asks the AI for ad drafts
 CREATE TABLE generation_requests (
   request_id      UUID PRIMARY KEY,
   listing_id      UUID NOT NULL REFERENCES listings,
-  agent_id        UUID NOT NULL REFERENCES agents,
+  real_estate_agent_id UUID NOT NULL REFERENCES real_estate_agents,
   model_name      TEXT NOT NULL,   -- e.g. gemini-x
   prompt_version  TEXT NOT NULL,   -- so you can compare prompt changes
   prompt_text     TEXT NOT NULL,   -- full prompt sent; LLM output is not reproducible
@@ -32,7 +33,7 @@ CREATE TABLE generation_requests (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Every option generated, including the rejected ones
+-- Every AI-generated draft, including the ones the real estate agent rejected
 CREATE TABLE candidates (
   candidate_id     UUID PRIMARY KEY,
   request_id       UUID NOT NULL REFERENCES generation_requests,
@@ -46,13 +47,13 @@ CREATE TABLE candidates (
   UNIQUE (request_id, display_position)
 );
 
--- What the agent decided (one row per request; no row = abandoned)
+-- What the real estate agent decided (one row per request; no row = abandoned)
 CREATE TABLE decisions (
   request_id         UUID PRIMARY KEY REFERENCES generation_requests,
   decision_type      TEXT NOT NULL
                      CHECK (decision_type IN ('kept', 'kept_none', 'wrote_own')),
   kept_candidate_id  UUID,
-  final_text         TEXT,             -- after the agent's edits
+  final_text         TEXT,             -- after the real estate agent's edits
   edit_distance      INT,              -- how much they changed it
   decided_at         TIMESTAMPTZ NOT NULL,
   seconds_to_decide  INT,
@@ -62,7 +63,7 @@ CREATE TABLE decisions (
     REFERENCES candidates (request_id, candidate_id)
 );
 
--- Optional: agent's creativity ranking (Study 1 in the field)
+-- Optional: the real estate agent's creativity ranking (Study 1 in the field)
 CREATE TABLE rankings (
   request_id    UUID NOT NULL,
   candidate_id  UUID NOT NULL,
@@ -120,9 +121,9 @@ CREATE TABLE outcomes (
 
 -- Postgres does not index foreign-key columns automatically.
 -- candidates and rankings are already covered by their unique constraints.
-CREATE INDEX listings_agent_idx            ON listings (agent_id);
+CREATE INDEX listings_real_estate_agent_idx ON listings (real_estate_agent_id);
 CREATE INDEX generation_requests_listing_idx ON generation_requests (listing_id);
-CREATE INDEX generation_requests_agent_idx ON generation_requests (agent_id);
+CREATE INDEX generation_requests_real_estate_agent_idx ON generation_requests (real_estate_agent_id);
 CREATE INDEX published_ads_listing_idx     ON published_ads (listing_id);
 CREATE INDEX published_ads_request_idx     ON published_ads (request_id);
 CREATE INDEX ad_events_ad_time_idx         ON ad_events (ad_id, occurred_at);
