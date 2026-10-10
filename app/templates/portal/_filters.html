@@ -1,0 +1,52 @@
+<form class="filterbar" id="filter-form" method="get" action="/" aria-label="Filters">
+  <label>Deal
+    <select name="deal">
+      <option value="">Buy or rent</option>
+      <option value="sale" {% if form.deal == "sale" %}selected{% endif %}>For sale</option>
+      <option value="rent" {% if form.deal == "rent" %}selected{% endif %}>For rent</option>
+    </select>
+  </label>
+  <label>Type
+    <select name="type">
+      <option value="">Any type</option>
+      <option value="factory" {% if form.type == "factory" %}selected{% endif %}>Factory</option>
+      <option value="warehouse" {% if form.type == "warehouse" %}selected{% endif %}>Warehouse</option>
+      <option value="land" {% if form.type == "land" %}selected{% endif %}>Any land</option>
+      <option value="industrial_land" {% if form.type == "industrial_land" %}selected{% endif %}>Industrial land</option>
+      <option value="commercial_land" {% if form.type == "commercial_land" %}selected{% endif %}>Commercial land</option>
+      <option value="agricultural_land" {% if form.type == "agricultural_land" %}selected{% endif %}>Agricultural land</option>
+      <option value="shop_office" {% if form.type == "shop_office" %}selected{% endif %}>Shop office</option>
+    </select>
+  </label>
+  <label>Area
+    <input name="area" list="areas" value="{{ form.area }}" placeholder="e.g. Shah Alam" maxlength="80">
+    <datalist id="areas">{% for a in AREAS %}<option value="{{ a }}">{% endfor %}</datalist>
+  </label>
+  <label>State
+    <select name="state"><option value="">Any state</option>{% for s in STATES %}<option {% if form.state == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+  </label>
+  <label>Max price ({{ currency }})
+    <input name="max_price" inputmode="numeric" value="{{ form.max_price }}" placeholder="Any">
+  </label>
+  <label>Min land (acres)
+    <input name="min_acres" inputmode="decimal" value="{{ form.min_acres }}" placeholder="Any">
+  </label>
+  <label>Min power (A)
+    <input name="min_power" inputmode="numeric" value="{{ form.min_power }}" placeholder="Any" title="Three-phase supply in amps. Listings quoted in kVA are converted (1 kVA ≈ 1.39 A).">
+  </label>
+  <label>Min ceiling (ft)
+    <input name="min_ceiling" inputmode="decimal" value="{{ form.min_ceiling }}" placeholder="Any">
+  </label>
+  <label>Tenure
+    <select name="tenure">
+      <option value="">Any</option>
+      <option value="freehold" {% if form.tenure == "freehold" %}selected{% endif %}>Freehold</option>
+      <option value="leasehold" {% if form.tenure == "leasehold" %}selected{% endif %}>Leasehold</option>
+    </select>
+  </label>
+  <label class="check"><input type="checkbox" name="container" value="1" {% if form.container %}checked{% endif %}> Container access</label>
+  <div class="filter-actions">
+    <button type="submit">Apply</button>
+    <a href="/" class="linklike" id="filter-clear">Clear</a>
+  </div>
+</form>

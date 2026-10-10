@@ -1,18 +1,27 @@
 {% for l in listings %}
-<a class="card" href="/listings/{{ l.listing_id }}">
-  {% if l.cover %}<img src="/uploads/{{ l.cover }}" alt="" loading="lazy">{% else %}<div class="noimg"></div>{% endif %}
+<a class="card" href="/listings/{{ l.listing_id }}" data-id="{{ l.listing_id }}">
+  <div class="card-media">
+    {% if l.cover %}<img src="/uploads/{{ l.cover }}" alt="" loading="lazy">{% else %}<div class="noimg"></div>{% endif %}
+    <span class="badge {{ l.deal_type }}">{{ "For rent" if l.deal_type == "rent" else "For sale" }}</span>
+  </div>
   <div class="card-body">
-    <div class="price">{{ l.price | money }}</div>
+    <div class="price">{{ l | price_label }}</div>
     <h3>{{ l.title }}</h3>
-    <p class="facts">
-      {% if l.bedrooms == 0 %}Studio{% elif l.bedrooms is not none %}{{ l.bedrooms }} bd{% endif %}
-      {% if l.bathrooms is not none %} · {{ l.bathrooms }} ba{% endif %}
-      {% if l.size_sqft %} · {{ "{:,}".format(l.size_sqft) }} sqft{% endif %}
-      {% if l.location %} · {{ l.location }}{% endif %}
-    </p>
-    {% if l.features %}<ul class="tags">{% for f in l.features[:4] %}<li>{{ f }}</li>{% endfor %}</ul>{% endif %}
+    <p class="facts">{{ l.property_type | type_label }}{% if l.location %} · {{ l.location }}{% endif %}{% if l.state and l.state != l.location %}, {{ l.state }}{% endif %}</p>
+    <ul class="specs">
+      {% if l.land_area_acres %}<li><b>{{ l.land_area_acres | number(2) }}</b> acres</li>{% endif %}
+      {% if l.size_sqft %}<li><b>{{ l.size_sqft | number }}</b> sqft built-up</li>{% endif %}
+      {% if l.power_amps %}<li><b>{{ l.power_amps | number }}</b> A</li>{% elif l.power_kva %}<li><b>{{ l.power_kva | number }}</b> kVA</li>{% endif %}
+      {% if l.ceiling_height_ft %}<li><b>{{ l.ceiling_height_ft | number(1) }}</b> ft ceiling</li>{% endif %}
+      {% if l.bedrooms is not none %}<li><b>{{ l.bedrooms }}</b> bed</li>{% endif %}
+    </ul>
+    <ul class="tags">
+      {% if l.tenure %}<li>{{ l.tenure | capitalize }}</li>{% endif %}
+      {% if l.container_access %}<li>Container access</li>{% endif %}
+      {% if l.zoning %}<li>{{ l.zoning | type_label }}</li>{% endif %}
+    </ul>
   </div>
 </a>
 {% else %}
-<p class="empty">No listings match yet.</p>
+<p class="empty">No listings match yet. Try removing a filter.</p>
 {% endfor %}

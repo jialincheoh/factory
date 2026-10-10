@@ -69,7 +69,7 @@ def test_wrong_password_and_missing_csrf_rejected(agent):
 def test_rejects_non_image_upload(agent):
     client = TestClient(app)
     token = sign_in(client, agent)
-    r = client.post("/agent/new", data={"description": "A lovely three bedroom house with a pool.", "csrf": token},
+    r = client.post("/agent/new", data={"description": "Factory for sale in Senai with 400A power.", "csrf": token},
                     files=[("photos", ("evil.jpg", b"<script>alert(1)</script>", "image/jpeg"))])
     assert r.status_code == 400 and "not a readable image" in r.text
 
@@ -78,8 +78,9 @@ def test_full_flow(agent):
     client = TestClient(app)
     token = sign_in(client, agent)
 
-    # 1. Upload photos + short description.
-    desc = "Spacious 3 bedroom 2 bathroom bungalow in Maple Grove with a pool and garden. 2,000 sqft, asking $950k."
+    # 1. Upload photos + short description (Malay and English mixed).
+    desc = ("Kilang dijual di Shah Alam. 2 ekar, 35,000 sqft built-up, 400A power, 30 ft ceiling height, "
+            "pegangan bebas, container access. Harga RM 18 juta.")
     r = client.post("/agent/new", data={"description": desc, "csrf": token},
                     files=[("photos", ("a.jpg", jpeg_with_gps(), "image/jpeg")),
                            ("photos", ("b.jpg", jpeg_with_gps(), "image/jpeg"))],
@@ -94,9 +95,12 @@ def test_full_flow(agent):
     stored = Image.open(config.UPLOAD_DIR / name)
     assert not stored.getexif()
 
-    # Every draft logged with a display position and the shuffle seed.
+    # Every draft logged with a display position and the shuffle seed; card parsed.
     req = db_one("SELECT order_seed, experiment_arm, analysis FROM generation_requests WHERE request_id = %s", [request_id])
-    assert req[1] == "random_order_v1" and req[2]["card"]["bedrooms"] == 3
+    card = req[2]["card"]
+    assert req[1] == "random_order_v1"
+    assert (card["property_type"], card["location"], card["land_area_acres"], card["power_amps"], card["tenure"],
+            card["container_access"], card["price"]) == ("factory", "Shah Alam", 2.0, 400, "freehold", True, 18_000_000)
     n = db_one("SELECT count(*) FROM candidates WHERE request_id = %s", [request_id])[0]
     assert n == config.DRAFTS_PER_REQUEST
 
@@ -104,41 +108,51 @@ def test_full_flow(agent):
     assert TestClient(app).get(f"/uploads/{name}").status_code == 404
     assert client.get(f"/uploads/{name}").status_code == 200
 
-    # 2. Review page shows the filled card and the drafts.
+    # 2. Review page shows the filled card, and a map pin at the town centre.
     page = client.get(review_url).text
-    assert 'name="bedrooms" inputmode="numeric" value="3"' in page
-    assert "Maple Grove" in page
+    assert 'name="power_amps" inputmode="numeric" value="400"' in page
+    assert 'id="pin-map" data-lat="3.0733"' in page
     cand_id = re.search(r'name="choice" value="([0-9a-f-]{36})"', page)[1]
     headline = re.search(rf'name="headline_{cand_id}" value="([^"]*)"', page)[1]
 
-    # 3. Publish with a small edit.
+    # 3. Publish with a small edit and an exact pin.
     form = {"csrf": token, "choice": cand_id, f"headline_{cand_id}": headline + "!",
-            f"body_{cand_id}": "Edited body text.", "title": "3-bedroom bungalow with pool", "property_type": "bungalow",
-            "location": "Maple Grove", "bedrooms": "3", "bathrooms": "2", "size_sqft": "2,000", "price": "950000",
-            "features": "Pool, garden"}
+            f"body_{cand_id}": "Edited body text.", "title": "Freehold factory with 400A in Shah Alam",
+            "property_type": "factory", "deal_type": "sale", "location": "Shah Alam", "state": "Selangor",
+            "price": "18,000,000", "land_area_acres": "2", "size_sqft": "35,000", "ceiling_height_ft": "30",
+            "power_amps": "400", "power_kva": "", "tenure": "freehold", "lease_years_left": "99",
+            "zoning": "medium_industrial", "container_access": "yes", "loading_bays": "3",
+            "features": "Office, Guardhouse", "latitude": "3.081", "longitude": "101.52"}
     r = client.post(f"/agent/requests/{request_id}/publish", data=form, follow_redirects=False)
     assert r.status_code == 303, r.text
     listing_url = r.headers["location"]
+    listing_id = listing_url.rsplit("/", 1)[1]
     d = db_one("SELECT decision_type, kept_candidate_id, edit_distance FROM decisions WHERE request_id = %s", [request_id])
     assert d[0] == "kept" and str(d[1]) == cand_id and d[2] > 0
+    row = db_one("SELECT tenure, lease_years_left, container_access, latitude, features FROM listings "
+                 "WHERE listing_id = %s", [listing_id])
+    assert row == ("freehold", None, True, 3.081, ["guardhouse", "office"])  # lease years dropped for freehold
     # A second decision on the same request is refused.
     assert client.post(f"/agent/requests/{request_id}/publish", data=form).status_code == 409
 
-    # 4. Buyer searches in plain language and finds it.
+    # 4. Buyer: the query iProperty's filters cannot express.
     buyer = TestClient(app)
-    r = buyer.post("/api/chat", json={"messages": [{"role": "user", "content": "3-bedroom house with a pool"}]})
-    assert r.status_code == 200 and r.json()["count"] >= 1
-    assert "3-bedroom bungalow with pool" in r.json()["html"]
-    # Follow-up keeps earlier requirements and adds a budget that excludes it.
     r = buyer.post("/api/chat", json={"messages": [
-        {"role": "user", "content": "3-bedroom house with a pool"},
-        {"role": "assistant", "content": r.json()["reply"]},
-        {"role": "user", "content": "under 500k please"}]})
-    assert "3-bedroom bungalow with pool" not in r.json()["html"]
+        {"role": "user", "content": "Factory in Shah Alam with 400 amp power and container access"}]})
+    data = r.json()
+    assert r.status_code == 200 and "Freehold factory with 400A in Shah Alam" in data["html"]
+    assert data["form"]["min_power"] == 400 and data["form"]["container"] is True and data["form"]["area"] == "Shah Alam"
+    assert any(m["id"] == listing_id for m in data["markers"])
+    # Follow-up keeps earlier requirements and adds one that excludes it.
+    r = buyer.post("/api/chat", json={"messages": [
+        {"role": "user", "content": "Factory in Shah Alam with 400 amp power and container access"},
+        {"role": "assistant", "content": data["reply"]},
+        {"role": "user", "content": "leasehold only"}]})
+    assert "Freehold factory with 400A in Shah Alam" not in r.json()["html"]
 
-    # 5. Listing page and phone reveal are logged against the ad.
-    assert "Edited body text." in buyer.get(listing_url).text
-    listing_id = listing_url.rsplit("/", 1)[1]
+    # 5. Listing page shows the specs and map; phone reveal is logged.
+    page = buyer.get(listing_url).text
+    assert "Edited body text." in page and "400 A, three-phase" in page and 'id="listing-map"' in page
     assert buyer.post(f"/api/listings/{listing_id}/phone").status_code == 403  # needs the fetch header
     r = buyer.post(f"/api/listings/{listing_id}/phone", headers={"X-Requested-With": "fetch"})
     assert r.json()["phone"] == "+00 5555 0000"
@@ -148,10 +162,51 @@ def test_full_flow(agent):
     assert counts["impression"] >= 1 and counts["click"] == 1 and counts["phone_reveal"] == 1
 
 
+@pytest.fixture(scope="module")
+def warehouses(agent):
+    """Two published listings: power quoted in kVA (1,000 kVA = about 1,391 A) and in amps."""
+    ids = {}
+    with psycopg.connect(config.DATABASE_URL) as conn:
+        for key, kva, amps, deal, container in (("kva", 1000, None, "rent", True), ("amps", None, 150, "rent", False)):
+            lid = uuid.uuid4()
+            conn.execute("INSERT INTO listings (listing_id, real_estate_agent_id, status, title, property_type, deal_type, "
+                         "location, state, power_kva, power_amps, container_access, price_listed) "
+                         "VALUES (%s,%s,'published',%s,'warehouse',%s,'Port Klang','Selangor',%s,%s,%s,50000)",
+                         [lid, agent["id"], f"Test warehouse {key}", deal, kva, amps, container])
+            conn.execute("INSERT INTO published_ads (ad_id, listing_id, channel, published_at, headline, ad_text) "
+                         "VALUES (%s,%s,'own_portal',now(),'h','b')", [uuid.uuid4(), lid])
+            ids[key] = lid
+    return ids
+
+
+def test_kva_listing_matches_amp_filter(warehouses):
+    r = TestClient(app).post("/api/search", json={"type": "warehouse", "deal": "rent", "min_power": "1000"})
+    html = r.json()["html"]
+    assert "Test warehouse kva" in html and "Test warehouse amps" not in html
+
+
+def test_filter_bar_works_without_javascript(warehouses):
+    page = TestClient(app).get("/?type=warehouse&area=Port+Klang&container=1").text
+    assert "Test warehouse kva" in page and "Test warehouse amps" not in page
+    assert 'name="container" value="1" checked' in page
+
+
+def test_chat_starts_from_filter_bar(warehouses):
+    r = TestClient(app).post("/api/chat", json={
+        "messages": [{"role": "user", "content": "warehouses in Port Klang"}],
+        "filters": {"container": "1"}})
+    html = r.json()["html"]
+    assert "Test warehouse kva" in html and "Test warehouse amps" not in html
+
+
+def test_bad_filter_values_are_ignored():
+    assert TestClient(app).get("/?min_power=abc&state=Atlantis&type=castle").status_code == 200
+
+
 def test_regenerate_logs_kept_none(agent):
     client = TestClient(app)
     token = sign_in(client, agent)
-    r = client.post("/agent/new", data={"description": "Two bedroom condo with balcony and gym.", "csrf": token},
+    r = client.post("/agent/new", data={"description": "Warehouse for rent in Klang, 20,000 sqft.", "csrf": token},
                     files=[("photos", ("a.jpg", jpeg_with_gps(), "image/jpeg"))], follow_redirects=False)
     first = r.headers["location"].rsplit("/", 1)[1]
     r = client.post(f"/agent/requests/{first}/regenerate", data={"csrf": token}, follow_redirects=False)

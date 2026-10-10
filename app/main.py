@@ -14,10 +14,10 @@ from psycopg.types.json import Jsonb
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import config, db, images, security
+from . import config, db, geo, images, security
 from .ai import get_assistant
 from .ai.llm import PROMPT_VERSION
-from .ai.schemas import PROPERTY_TYPES, SearchFilters
+from .ai.schemas import LAND_TYPES, PROPERTY_TYPES, ZONINGS, SearchFilters
 
 EXPERIMENT_ARM = "random_order_v1"  # drafts shown in seeded random order
 
@@ -34,11 +34,15 @@ app.mount("/static", StaticFiles(directory=config.ROOT / "app" / "static"), name
 templates = Jinja2Templates(directory=config.ROOT / "app" / "templates")  # autoescapes HTML
 
 
+# OpenStreetMap tiles are the only third-party resource; Leaflet itself is served from /static.
+MAP_TILES = "https://tile.openstreetmap.org"
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
+        f"default-src 'self'; img-src 'self' data: {MAP_TILES}; style-src 'self'; script-src 'self'; "
         "frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
@@ -48,10 +52,26 @@ async def security_headers(request: Request, call_next):
 def money(value) -> str:
     if value is None:
         return "Price on request"
-    return f"{config.CURRENCY}{float(value):,.0f}"
+    return f"{config.CURRENCY} {float(value):,.0f}"
 
 
-templates.env.filters["money"] = money
+def price_label(listing) -> str:
+    if listing.get("price") is None:
+        return "Price on request"
+    return money(listing["price"]) + (" /mo" if listing.get("deal_type") == "rent" else "")
+
+
+def type_label(value) -> str:
+    return (value or "other").replace("_", " ").capitalize()
+
+
+def number(value, digits: int = 0) -> str:
+    return f"{float(value):,.{digits}f}".rstrip("0").rstrip(".") if digits else f"{float(value):,.0f}"
+
+
+templates.env.filters.update(money=money, price_label=price_label, type_label=type_label, number=number)
+templates.env.globals.update(STATES=geo.STATES, AREAS=sorted(geo.AREAS), PROPERTY_TYPES=PROPERTY_TYPES,
+                             ZONINGS=ZONINGS, MAP_TILES=MAP_TILES, currency=config.CURRENCY)
 
 
 def render(request: Request, name: str, status_code: int = 200, **ctx):
@@ -70,29 +90,109 @@ def log_events(conn, ad_ids, event_type: str) -> None:
 
 
 # ---------------------------------------------------------------- buyer side
+# The filter bar and the chat share one SearchFilters object: the bar is sent
+# with every chat message, and the chat's filters are written back to the bar.
+
+def _num(value, cast=float):
+    try:
+        v = cast(str(value).replace(",", "").strip())
+        return v if v >= 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def filters_from_form(p) -> SearchFilters:
+    """Filter-bar fields (query string or JSON) to SearchFilters; bad values are ignored."""
+    f = SearchFilters()
+    if p.get("deal") in ("sale", "rent"):
+        f.deal_type = p["deal"]
+    t = p.get("type")
+    if t == "land":
+        f.property_types = list(LAND_TYPES)
+    elif t in PROPERTY_TYPES:
+        f.property_types = [t]
+    if (p.get("area") or "").strip():
+        f.location = str(p["area"]).strip()[:80]
+    if p.get("state") in geo.STATES:
+        f.state = p["state"]
+    f.max_price = _num(p.get("max_price")) if p.get("max_price") else None
+    f.min_land_acres = _num(p.get("min_acres")) if p.get("min_acres") else None
+    f.min_power_amps = _num(p.get("min_power"), int) if p.get("min_power") else None
+    f.min_ceiling_ft = _num(p.get("min_ceiling")) if p.get("min_ceiling") else None
+    if p.get("tenure") in ("freehold", "leasehold"):
+        f.tenure = p["tenure"]
+    if p.get("container") in ("1", "on", "true", True):
+        f.container_access = True
+    return f
+
+
+def form_from_filters(f: SearchFilters) -> dict:
+    """The reverse, so the filter bar shows what the chat searched for."""
+    types = set(f.property_types)
+    t = "land" if types == set(LAND_TYPES) else (f.property_types[0] if len(types) == 1 else "")
+    out = {"deal": f.deal_type or "", "type": t, "area": f.location or "", "state": f.state or "",
+           "max_price": f.max_price, "min_acres": f.min_land_acres, "min_power": f.min_power_amps,
+           "min_ceiling": f.min_ceiling_ft, "tenure": f.tenure or "", "container": bool(f.container_access)}
+    return {k: ("" if v is None else (number(v, 2) if isinstance(v, float) else v)) for k, v in out.items()}
+
+
+def results_payload(results: list[dict]) -> dict:
+    return {
+        "count": len(results),
+        "html": templates.get_template("portal/_cards.html").render(listings=results),
+        "markers": [{"id": str(r["listing_id"]), "lat": r["latitude"], "lng": r["longitude"],
+                     "title": r["title"], "price": price_label(r)}
+                    for r in results if r["latitude"] is not None],
+    }
+
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request, conn=Depends(db.get_conn)):
-    listings = db.search_listings(conn, SearchFilters(), limit=24)
+    filters = filters_from_form(request.query_params)
+    listings = db.search_listings(conn, filters)
     log_events(conn, [l["ad_id"] for l in listings], "impression")
-    return render(request, "portal/home.html", listings=listings)
+    payload = results_payload(listings)
+    return render(request, "portal/home.html", listings=listings, form=form_from_filters(filters),
+                  filtered=bool(request.query_params), markers=payload["markers"])
+
+
+async def _json_body(request: Request) -> dict:
+    if request.headers.get("content-type", "").split(";")[0] != "application/json":
+        raise HTTPException(415)  # JSON-only, so cross-site forms cannot post here
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(400)
+    return body
+
+
+@app.post("/api/search")
+async def search(request: Request):
+    filters = filters_from_form(await _json_body(request))
+
+    def run():
+        with db.connect() as conn:
+            results = db.search_listings(conn, filters)
+            log_events(conn, [r["ad_id"] for r in results], "impression")
+            return results
+
+    return results_payload(await run_in_threadpool(run))
 
 
 @app.post("/api/chat")
 async def chat(request: Request):
-    if request.headers.get("content-type", "").split(";")[0] != "application/json":
-        raise HTTPException(415)  # JSON-only, so cross-site forms cannot post here
-    body = await request.json()
+    body = await _json_body(request)
     history = [
         {"role": "user" if m.get("role") == "user" else "assistant", "content": str(m.get("content", ""))[:1000]}
         for m in body.get("messages", [])[-12:] if isinstance(m, dict)
     ]
     if not history or history[-1]["role"] != "user" or not history[-1]["content"].strip():
         raise HTTPException(400, "Send a message.")
+    current = filters_from_form(body.get("filters") or {})
 
     def run():
         with db.connect() as conn:
-            reply, filters, results = get_assistant().search_chat(history, lambda f: db.search_listings(conn, f))
+            reply, filters, results = get_assistant().search_chat(
+                history, lambda f: db.search_listings(conn, f), current)
             if results is not None:
                 log_events(conn, [r["ad_id"] for r in results], "impression")
             return reply, filters, results
@@ -104,9 +204,7 @@ async def chat(request: Request):
 
     out = {"reply": reply}
     if results is not None:
-        out["filters"] = filters.model_dump(exclude_none=True, exclude_defaults=True)
-        out["count"] = len(results)
-        out["html"] = templates.get_template("portal/_cards.html").render(listings=results, money=money)
+        out.update(results_payload(results), form=form_from_filters(filters))
     return out
 
 
@@ -192,7 +290,7 @@ def dashboard(request: Request, agent_id: str = Depends(security.require_agent),
     agent = conn.execute("SELECT display_name FROM real_estate_agents WHERE real_estate_agent_id = %s",
                          [agent_id]).fetchone()
     listings = conn.execute("""
-        SELECT l.listing_id, l.title, l.status, l.price_listed AS price, l.updated_at,
+        SELECT l.listing_id, l.title, l.status, l.deal_type, l.price_listed AS price, l.updated_at,
                (SELECT request_id FROM generation_requests g WHERE g.listing_id = l.listing_id
                  ORDER BY created_at DESC LIMIT 1) AS latest_request,
                count(e.*) FILTER (WHERE e.event_type = 'impression')   AS impressions,
@@ -300,8 +398,16 @@ def review(request_id: uuid.UUID, request: Request, agent_id: str = Depends(secu
     photos = conn.execute("SELECT file_name FROM listing_images WHERE listing_id = %s ORDER BY position",
                           [req["listing_id"]]).fetchall()
     request.session[f"opened:{request_id}"] = time.time()  # for seconds_to_decide
-    return render(request, "agent/review.html", req=req, analysis=req["analysis"] or {}, drafts=drafts,
-                  decision=decision, photos=photos, property_types=PROPERTY_TYPES)
+    analysis = req["analysis"] or {}
+    card = analysis.get("card") or {}
+    # First map pin: the named town's centre; the agent drags it to the exact spot.
+    known = geo.lookup(card.get("location"))
+    pin = {"lat": known[1], "lng": known[2], "zoom": 13} if known else \
+          {"lat": geo.MALAYSIA_CENTRE[0], "lng": geo.MALAYSIA_CENTRE[1], "zoom": 6}
+    if known and not card.get("state"):
+        card["state"] = known[0]
+    return render(request, "agent/review.html", req=req, analysis=analysis, card=card, drafts=drafts,
+                  decision=decision, photos=photos, pin=pin, pin_set=bool(known))
 
 
 def edit_distance(a: str, b: str) -> int:
@@ -324,6 +430,52 @@ def _opt_int(value: str | None, field: str) -> int | None:
     if not value.isdigit():
         raise HTTPException(400, f"{field} must be a whole number.")
     return int(value)
+
+
+def _opt_float(value: str | None, field: str, lo: float = 0, hi: float = 1e12) -> float | None:
+    value = (value or "").strip().replace(",", "")
+    if not value:
+        return None
+    try:
+        v = float(value)
+    except ValueError:
+        raise HTTPException(400, f"{field} must be a number.")
+    if not lo <= v <= hi:
+        raise HTTPException(400, f"{field} is out of range.")
+    return v
+
+
+def card_from_form(form) -> dict:
+    """Validated listing columns from the review form, keyed by column name."""
+    text = lambda k, n=120: (str(form.get(k, "")).strip()[:n] or None)
+    property_type = form.get("property_type") if form.get("property_type") in PROPERTY_TYPES else "other"
+    tenure = form.get("tenure") if form.get("tenure") in ("freehold", "leasehold") else None
+    lat, lng = _opt_float(form.get("latitude"), "Latitude", -90, 90), _opt_float(form.get("longitude"), "Longitude", -180, 180)
+    if (lat is None) != (lng is None):
+        lat = lng = None
+    return {
+        "title": text("title"),
+        "property_type": property_type,
+        "deal_type": "rent" if form.get("deal_type") == "rent" else "sale",
+        "location": text("location"),
+        "state": form.get("state") if form.get("state") in geo.STATES else None,
+        "price_listed": _opt_float(form.get("price"), "Price"),
+        "land_area_acres": _opt_float(form.get("land_area_acres"), "Land area", 0.001, 100000),
+        "size_sqft": _opt_int(form.get("size_sqft"), "Built-up area") or None,
+        "ceiling_height_ft": _opt_float(form.get("ceiling_height_ft"), "Ceiling height", 1, 999),
+        "power_amps": _opt_int(form.get("power_amps"), "Power (amps)") or None,
+        "power_kva": _opt_int(form.get("power_kva"), "Power (kVA)") or None,
+        "tenure": tenure,
+        "lease_years_left": (_opt_int(form.get("lease_years_left"), "Lease years left") or None) if tenure == "leasehold" else None,
+        "zoning": form.get("zoning") if form.get("zoning") in ZONINGS else None,
+        "container_access": {"yes": True, "no": False}.get(form.get("container_access")),
+        "loading_bays": _opt_int(form.get("loading_bays"), "Loading bays"),
+        "bedrooms": _opt_int(form.get("bedrooms"), "Bedrooms"),
+        "bathrooms": _opt_int(form.get("bathrooms"), "Bathrooms"),
+        "features": sorted({f.strip().lower()[:40] for f in str(form.get("features", "")).split(",") if f.strip()})[:30],
+        "latitude": lat,
+        "longitude": lng,
+    }
 
 
 @app.post("/agent/requests/{request_id}/publish")
@@ -353,19 +505,7 @@ async def publish(request_id: uuid.UUID, request: Request, agent_id: str = Depen
     if not headline or not body:
         raise HTTPException(400, "The ad needs a headline and a body.")
 
-    property_type = form.get("property_type")
-    if property_type not in PROPERTY_TYPES:
-        property_type = "other"
-    price = (form.get("price") or "").strip().replace(",", "")
-    try:
-        price = float(price) if price else None
-    except ValueError:
-        raise HTTPException(400, "Price must be a number.")
-    features = sorted({f.strip().lower() for f in str(form.get("features", "")).split(",") if f.strip()})[:30]
-
-    bedrooms = _opt_int(form.get("bedrooms"), "Bedrooms")
-    bathrooms = _opt_int(form.get("bathrooms"), "Bathrooms")
-    size_sqft = _opt_int(form.get("size_sqft"), "Size")
+    card = card_from_form(form)
 
     opened = request.session.pop(f"opened:{request_id}", None)
     final_text = f"{headline}\n\n{body}"
@@ -375,14 +515,12 @@ async def publish(request_id: uuid.UUID, request: Request, agent_id: str = Depen
         [request_id, decision_type, candidate and candidate["candidate_id"], final_text,
          edit_distance(f"{candidate['headline']}\n\n{candidate['ad_text']}", final_text) if candidate else None,
          int(time.time() - opened) if opened else None])
+    card["title"] = card["title"] or headline
+    card["description_language"] = (req["analysis"] or {}).get("detected_language")
     conn.execute(
-        "UPDATE listings SET status = 'published', title = %s, property_type = %s, location = %s, bedrooms = %s, "
-        "bathrooms = %s, size_sqft = %s, price_listed = %s, features = %s, description_language = %s, "
-        "updated_at = now() WHERE listing_id = %s",
-        [str(form.get("title", "")).strip()[:120] or headline, property_type,
-         str(form.get("location", "")).strip()[:120] or None,
-         bedrooms, bathrooms, size_sqft, price, features,
-         (req["analysis"] or {}).get("detected_language"), req["listing_id"]])
+        "UPDATE listings SET status = 'published', updated_at = now(), "
+        + ", ".join(f"{col} = %s" for col in card) + " WHERE listing_id = %s",
+        [*card.values(), req["listing_id"]])  # column names come from card_from_form, never from the request
     conn.execute("INSERT INTO published_ads (ad_id, request_id, listing_id, channel, published_at, headline, ad_text) "
                  "VALUES (%s,%s,%s,'own_portal',now(),%s,%s)",
                  [uuid.uuid4(), request_id, req["listing_id"], headline, body])

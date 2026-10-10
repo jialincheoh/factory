@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Review drafts · Homefinder{% endblock %}
 {% block content %}
-{% set card = analysis.card or {} %}
 <h1>Review before publishing</h1>
 <div class="thumbs large">{% for p in photos %}<img src="/uploads/{{ p.file_name }}" alt="Photo {{ loop.index }}">{% endfor %}</div>
 
@@ -32,19 +31,58 @@
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <section class="panel">
     <h2>Property card</h2>
-    <p class="muted small">Filled from your description and photos. Buyers search on these fields, so check them.</p>
+    <p class="muted small">Filled from your description and photos. Buyers filter on these fields, so check each one and leave unknowns empty.</p>
     <div class="card-grid">
       <label class="span2">Title <input name="title" value="{{ card.title or '' }}" maxlength="120"></label>
       <label>Type
-        <select name="property_type">{% for t in property_types %}<option value="{{ t }}" {% if t == card.property_type %}selected{% endif %}>{{ t | capitalize }}</option>{% endfor %}</select>
+        <select name="property_type">{% for t in PROPERTY_TYPES %}<option value="{{ t }}" {% if t == card.property_type %}selected{% endif %}>{{ t | type_label }}</option>{% endfor %}</select>
       </label>
-      <label>Location <input name="location" value="{{ card.location or '' }}" maxlength="120"></label>
-      <label>Bedrooms <input name="bedrooms" inputmode="numeric" value="{{ card.bedrooms if card.bedrooms is not none else '' }}"></label>
-      <label>Bathrooms <input name="bathrooms" inputmode="numeric" value="{{ card.bathrooms if card.bathrooms is not none else '' }}"></label>
-      <label>Size (sqft) <input name="size_sqft" inputmode="numeric" value="{{ card.size_sqft or '' }}"></label>
-      <label>Price <input name="price" inputmode="decimal" value="{{ '%.0f' % card.price if card.price else '' }}"></label>
+      <label>Deal
+        <select name="deal_type">
+          <option value="sale" {% if card.deal_type != "rent" %}selected{% endif %}>For sale</option>
+          <option value="rent" {% if card.deal_type == "rent" %}selected{% endif %}>For rent (price per month)</option>
+        </select>
+      </label>
+      <label>Area / town <input name="location" id="card-location" list="areas" value="{{ card.location or '' }}" maxlength="120">
+        <datalist id="areas">{% for a in AREAS %}<option value="{{ a }}">{% endfor %}</datalist>
+      </label>
+      <label>State
+        <select name="state"><option value="">–</option>{% for s in STATES %}<option {% if card.state == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+      </label>
+      <label>Price ({{ currency }}) <input name="price" inputmode="decimal" value="{{ '%.0f' % card.price if card.price else '' }}"></label>
+      <label>Land area (acres) <input name="land_area_acres" inputmode="decimal" value="{{ card.land_area_acres if card.land_area_acres is not none else '' }}"></label>
+      <label>Built-up area (sqft) <input name="size_sqft" inputmode="numeric" value="{{ card.size_sqft if card.size_sqft is not none else '' }}"></label>
+      <label>Ceiling height (ft) <input name="ceiling_height_ft" inputmode="decimal" value="{{ card.ceiling_height_ft if card.ceiling_height_ft is not none else '' }}"></label>
+      <label>Power (amps) <input name="power_amps" inputmode="numeric" value="{{ card.power_amps if card.power_amps is not none else '' }}"></label>
+      <label>Power (kVA) <input name="power_kva" inputmode="numeric" value="{{ card.power_kva if card.power_kva is not none else '' }}" title="Fill whichever unit the owner quoted"></label>
+      <label>Tenure
+        <select name="tenure">
+          <option value="">–</option>
+          <option value="freehold" {% if card.tenure == "freehold" %}selected{% endif %}>Freehold</option>
+          <option value="leasehold" {% if card.tenure == "leasehold" %}selected{% endif %}>Leasehold</option>
+        </select>
+      </label>
+      <label>Lease years left <input name="lease_years_left" inputmode="numeric" value="{{ card.lease_years_left if card.lease_years_left is not none else '' }}"></label>
+      <label>Zoning
+        <select name="zoning"><option value="">–</option>{% for z in ZONINGS %}<option value="{{ z }}" {% if card.zoning == z %}selected{% endif %}>{{ z | type_label }}</option>{% endfor %}</select>
+      </label>
+      <label>40-ft container access
+        <select name="container_access">
+          <option value="">Not stated</option>
+          <option value="yes" {% if card.container_access == true %}selected{% endif %}>Yes</option>
+          <option value="no" {% if card.container_access == false %}selected{% endif %}>No</option>
+        </select>
+      </label>
+      <label>Loading bays <input name="loading_bays" inputmode="numeric" value="{{ card.loading_bays if card.loading_bays is not none else '' }}"></label>
+      <label>Bedrooms (residential) <input name="bedrooms" inputmode="numeric" value="{{ card.bedrooms if card.bedrooms is not none else '' }}"></label>
+      <label>Bathrooms (residential) <input name="bathrooms" inputmode="numeric" value="{{ card.bathrooms if card.bathrooms is not none else '' }}"></label>
       <label class="span2">Features (comma-separated) <input name="features" value="{{ (card.features or []) | join(', ') }}"></label>
     </div>
+    <h3 class="map-label">Map location</h3>
+    <p class="muted small" id="pin-help">{% if pin_set %}The pin is at the centre of {{ card.location }}. Click the map or drag the pin to the exact site.{% else %}Click the map to place the pin on the site. Leave it unset to hide the listing from the map.{% endif %}</p>
+    <div class="pin-map" id="pin-map" data-lat="{{ pin.lat }}" data-lng="{{ pin.lng }}" data-zoom="{{ pin.zoom }}" data-set="{{ 1 if pin_set else 0 }}" data-tiles="{{ MAP_TILES }}"></div>
+    <input type="hidden" name="latitude" id="pin-lat" value="{{ pin.lat if pin_set else '' }}">
+    <input type="hidden" name="longitude" id="pin-lng" value="{{ pin.lng if pin_set else '' }}">
   </section>
 
   <section class="panel">

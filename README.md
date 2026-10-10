@@ -63,9 +63,15 @@ A FastAPI app with server-rendered pages, the Postgres schema above, and LangCha
 3. The review page shows the checks, the editable card, and the drafts in seeded random order. The agent keeps one (and edits it), writes their own, or asks for new drafts.
 4. Publishing writes the decision (`kept`, `wrote_own` or `kept_none`), edit distance and time to decide, updates the card and puts the ad live.
 
+**Built for factories, warehouses and land in Malaysia.** The property card and search cover the specs industrial buyers screen on: sale or rent, land area (acres), built-up area, ceiling height, power supply (amps or kVA; kVA is converted to amps for search, 1 kVA ≈ 1.39 A at 415 V three-phase), freehold or leasehold with years left, zoning (light, medium or heavy industrial, commercial, agricultural), 40-ft container access and loading bays. The model reads English, Malay and Chinese descriptions (e.g. *kilang*, *ekar*, *pegangan bebas*).
+
 **Buyer side (`/`)**
 
-- A chat box takes plain-language queries ("3-bedroom house with a pool", then "cheaper ones?"). The model calls a `search_listings` tool with structured filters (`SearchFilters`); the app runs a parameterised SQL query and shows the results as cards. The model never writes SQL and cannot invent listings.
+- A **filter bar** for the main specs works as a plain form without JavaScript. With JavaScript it updates results in place, is sent with every chat message, and is rewritten from the chat's filters, so the two never disagree.
+- A **map** (Leaflet with OpenStreetMap tiles; Leaflet is served from `/static`, not a CDN) shows every result. Agents set the exact site by dropping a pin on the review page; it starts at the named town's centre (`app/geo.py`).
+- Listing pages have a **photo viewer** (thumbnails, arrows, swipe, keyboard, full-screen), a specifications table, land price per sqft, and a map.
+
+- A chat box takes plain-language queries ("Factory in Shah Alam with 400 amp power and container access", then "freehold only"). The model calls a `search_listings` tool with structured filters (`SearchFilters`); the app runs a parameterised SQL query and shows the results as cards. The model never writes SQL and cannot invent listings.
 - Listing pages hide the agent's phone number behind a button. Impressions, page opens and phone reveals go to `ad_events`, and the agent's dashboard shows the counts per listing.
 
 **Security measures**
@@ -78,14 +84,16 @@ Argon2 password hashing with login throttling; signed, HttpOnly, SameSite sessio
 
 ```sh
 cp .env.example .env              # set POSTGRES_PASSWORD, SESSION_SECRET and a model key
-docker compose up -d              # Postgres with V1 and V2 applied
+docker compose up -d              # Postgres with all migrations applied
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m scripts.seed_demo        # optional: 5 made-up listings + demo login
+.venv/bin/python -m scripts.seed_demo        # optional: 10 made-up industrial listings + demo login
 .venv/bin/python -m scripts.create_agent --email you@example.com --name "Your Name" --phone "+00 0000 0000"
 .venv/bin/uvicorn app.main:app --reload      # http://localhost:8000
 ```
 
-If your database volume was created before `V2__website.sql` existed, rebuild it: `docker compose down -v && docker compose up -d`.
+Migrations run only when the database volume is first created. For an existing volume, apply new ones by hand, e.g. `docker compose exec -T db psql -U listing -d listing_ads -f - < db/migrations/V3__industrial_fields.sql`, or rebuild it: `docker compose down -v && docker compose up -d`.
+
+OpenStreetMap's public tile server is fine for development and light use; for a busy production site, switch `MAP_TILES` in `app/main.py` to a commercial tile provider (their usage policy asks heavy users to).
 
 Run the app tests (they create and drop a separate `listing_ads_test` database and use the offline stand-in model, so no API key is needed):
 
@@ -118,6 +126,9 @@ app/templates/, app/static/            pages, CSS, small JavaScript
 scripts/                               create_agent, seed_demo
 db/migrations/V1__initial_schema.sql   schema (first migration)
 db/migrations/V2__website.sql          logins, property card, photos, analysis
+db/migrations/V3__industrial_fields.sql  power, ceiling, land area, tenure, zoning, container access, map pin
+app/geo.py                             Malaysian towns and industrial areas (approximate centres)
+app/static/vendor/leaflet/             Leaflet 1.9.4 (BSD-2), checked against its published SRI hashes
 tests/test_schema.sql                  constraint tests, rolled back after running
 tests/test_app.py                      end-to-end website tests (pytest)
 docker-compose.yml                     local Postgres with the schema applied

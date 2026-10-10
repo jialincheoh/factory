@@ -3,27 +3,73 @@
 {% block content %}
 <a class="back" href="/">← All listings</a>
 <article class="listing">
-  <div class="gallery">
-    {% for p in photos %}<img src="/uploads/{{ p.file_name }}" alt="Photo {{ loop.index }} of {{ listing.title }}">{% endfor %}
+  {% if photos %}
+  <div class="viewer" id="viewer" data-count="{{ photos | length }}">
+    <div class="viewer-stage">
+      {% for p in photos %}
+      <img src="/uploads/{{ p.file_name }}" alt="Photo {{ loop.index }} of {{ listing.title }}" class="viewer-img{% if loop.first %} active{% endif %}" data-index="{{ loop.index0 }}">
+      {% endfor %}
+      {% if photos | length > 1 %}
+      <button type="button" class="viewer-nav prev" aria-label="Previous photo">‹</button>
+      <button type="button" class="viewer-nav next" aria-label="Next photo">›</button>
+      {% endif %}
+      <button type="button" class="viewer-expand" aria-label="View full screen">⤢</button>
+      <span class="viewer-count"><span id="viewer-pos">1</span> / {{ photos | length }}</span>
+    </div>
+    {% if photos | length > 1 %}
+    <div class="viewer-thumbs">
+      {% for p in photos %}
+      <button type="button" class="thumb{% if loop.first %} active{% endif %}" data-index="{{ loop.index0 }}" aria-label="Show photo {{ loop.index }}"><img src="/uploads/{{ p.file_name }}" alt=""></button>
+      {% endfor %}
+    </div>
+    {% endif %}
   </div>
+  <dialog class="lightbox" id="lightbox" aria-label="Photo viewer">
+    <img id="lightbox-img" alt="">
+    <button type="button" class="lb-close" aria-label="Close">×</button>
+    {% if photos | length > 1 %}
+    <button type="button" class="lb-nav prev" aria-label="Previous photo">‹</button>
+    <button type="button" class="lb-nav next" aria-label="Next photo">›</button>
+    {% endif %}
+  </dialog>
+  {% endif %}
+
   <div class="listing-main">
     <div>
-      <p class="price big">{{ listing.price | money }}</p>
+      <p class="eyebrow"><span class="badge inline {{ listing.deal_type }}">{{ "For rent" if listing.deal_type == "rent" else "For sale" }}</span> {{ listing.property_type | type_label }}{% if listing.location %} · {{ listing.location }}{% endif %}{% if listing.state and listing.state != listing.location %}, {{ listing.state }}{% endif %}</p>
+      <p class="price big">{{ listing | price_label }}</p>
+      {% if listing.price and listing.land_area_acres and listing.deal_type == "sale" %}
+        <p class="muted small">≈ {{ currency }} {{ (listing.price / (listing.land_area_acres * 43560)) | number(2) }} per sqft of land</p>
+      {% endif %}
       <h1>{{ listing.headline }}</h1>
       <div class="ad-text">{% for para in listing.ad_text.split("\n") if para.strip() %}<p>{{ para }}</p>{% endfor %}</div>
-    </div>
-    <aside class="property-card">
-      <h2>Property card</h2>
-      <dl>
-        <dt>Type</dt><dd>{{ listing.property_type | capitalize }}</dd>
-        {% if listing.location %}<dt>Location</dt><dd>{{ listing.location }}</dd>{% endif %}
+
+      <h2>Specifications</h2>
+      <dl class="spec-table">
+        <dt>Property type</dt><dd>{{ listing.property_type | type_label }}</dd>
+        {% if listing.land_area_acres %}<dt>Land area</dt><dd>{{ listing.land_area_acres | number(3) }} acres ({{ (listing.land_area_acres * 43560) | number }} sqft)</dd>{% endif %}
+        {% if listing.size_sqft %}<dt>Built-up area</dt><dd>{{ listing.size_sqft | number }} sqft</dd>{% endif %}
+        {% if listing.power_amps %}<dt>Power supply</dt><dd>{{ listing.power_amps | number }} A, three-phase</dd>
+        {% elif listing.power_kva %}<dt>Power supply</dt><dd>{{ listing.power_kva | number }} kVA (≈ {{ listing.power_amps_equiv | number }} A)</dd>{% endif %}
+        {% if listing.ceiling_height_ft %}<dt>Ceiling height</dt><dd>{{ listing.ceiling_height_ft | number(1) }} ft</dd>{% endif %}
+        {% if listing.tenure %}<dt>Tenure</dt><dd>{{ listing.tenure | capitalize }}{% if listing.lease_years_left %}, {{ listing.lease_years_left }} years left{% endif %}</dd>{% endif %}
+        {% if listing.zoning %}<dt>Zoning</dt><dd>{{ listing.zoning | type_label }}</dd>{% endif %}
+        {% if listing.container_access is not none %}<dt>40-ft container access</dt><dd>{{ "Yes" if listing.container_access else "No" }}</dd>{% endif %}
+        {% if listing.loading_bays is not none %}<dt>Loading bays</dt><dd>{{ listing.loading_bays }}</dd>{% endif %}
         {% if listing.bedrooms is not none %}<dt>Bedrooms</dt><dd>{{ listing.bedrooms }}</dd>{% endif %}
-        {% if listing.bathrooms is not none %}<dt>Bathrooms</dt><dd>{{ listing.bathrooms }}</dd>{% endif %}
-        {% if listing.size_sqft %}<dt>Size</dt><dd>{{ "{:,}".format(listing.size_sqft) }} sqft</dd>{% endif %}
       </dl>
       {% if listing.features %}<ul class="tags">{% for f in listing.features %}<li>{{ f }}</li>{% endfor %}</ul>{% endif %}
-      <button class="button wide" id="reveal" data-listing="{{ listing.listing_id }}" type="button">Show phone number</button>
-      <p id="phone" class="phone" hidden></p>
+    </div>
+    <aside class="side">
+      <div class="property-card">
+        <p class="price">{{ listing | price_label }}</p>
+        <p class="muted small">Listed by a registered agent. The phone number is shown when you ask for it.</p>
+        <button class="button wide" id="reveal" data-listing="{{ listing.listing_id }}" type="button">Show phone number</button>
+        <p id="phone" class="phone" hidden></p>
+      </div>
+      {% if listing.latitude is not none %}
+      <div class="mini-map" id="listing-map" data-lat="{{ listing.latitude }}" data-lng="{{ listing.longitude }}" data-tiles="{{ MAP_TILES }}" aria-label="Map"></div>
+      {% endif %}
     </aside>
   </div>
 </article>

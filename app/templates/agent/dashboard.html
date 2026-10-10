@@ -16,7 +16,7 @@
         {% else %}<a href="/agent/requests/{{ l.latest_request }}">Untitled draft</a>{% endif %}
       </td>
       <td><span class="status {{ l.status }}">{{ l.status }}</span></td>
-      <td>{{ l.price | money if l.status == 'published' else '–' }}</td>
+      <td>{{ l | price_label if l.status == "published" else "–" }}</td>
       <td class="num">{{ l.impressions }}</td><td class="num">{{ l.clicks }}</td><td class="num">{{ l.phone_reveals }}</td>
     </tr>
   {% endfor %}

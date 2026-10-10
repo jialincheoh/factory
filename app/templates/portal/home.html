@@ -1,19 +1,33 @@
 {% extends "base.html" %}
 {% block main_class %}portal{% endblock %}
 {% block content %}
-<section class="chat" aria-label="Search assistant">
-  <h1>Find a home by describing it</h1>
-  <p class="muted">Try “3-bedroom house with a pool” or “condo under 600k with parking”, then refine: “cheaper ones?”</p>
-  <div id="chat-log" class="chat-log" aria-live="polite"></div>
-  <form id="chat-form" class="chat-form">
-    <input id="chat-input" name="q" autocomplete="off" maxlength="1000" placeholder="What are you looking for?" required>
-    <button type="submit">Search</button>
-  </form>
-  <div id="chat-filters" class="filters"></div>
-  <button id="chat-reset" class="linklike" type="button" hidden>Start over</button>
+<section class="hero">
+  <h1>Factories, warehouses and land across Malaysia</h1>
+  <p class="muted">Search by specs that matter to your operations: power supply, ceiling height, land size, tenure and container access.</p>
 </section>
-<section class="results">
-  <h2 id="results-heading">Latest listings</h2>
-  <div id="results" class="grid">{% include "portal/_cards.html" %}</div>
-</section>
+{% include "portal/_filters.html" %}
+<div class="portal-body">
+  <section class="chat" aria-label="Search assistant">
+    <h2>Describe what you need</h2>
+    <p class="muted small">Try “Factory in Shah Alam with 400 amp power and container access” or “tanah industri di Johor 5 ekar”, then refine: “freehold only”.</p>
+    <div id="chat-log" class="chat-log" aria-live="polite"></div>
+    <form id="chat-form" class="chat-form">
+      <input id="chat-input" name="q" autocomplete="off" maxlength="1000" placeholder="What are you looking for?" required>
+      <button type="submit">Ask</button>
+    </form>
+    <button id="chat-reset" class="linklike" type="button" hidden>Start over</button>
+  </section>
+  <section class="results">
+    <div class="results-head">
+      <h2 id="results-heading">{% if filtered %}{{ listings | length }} matching listing{{ "" if listings | length == 1 else "s" }}{% else %}Latest listings{% endif %}</h2>
+      <div class="view-toggle" role="group" aria-label="View">
+        <button type="button" class="toggle active" data-view="split">Map + list</button>
+        <button type="button" class="toggle" data-view="list">List only</button>
+      </div>
+    </div>
+    <div id="results-map" class="results-map" data-tiles="{{ MAP_TILES }}"></div>
+    <script type="application/json" id="markers-data">{{ markers | tojson }}</script>
+    <div id="results" class="grid">{% include "portal/_cards.html" %}</div>
+  </section>
+</div>
 {% endblock %}

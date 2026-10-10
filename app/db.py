@@ -6,7 +6,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from . import config
-from .ai.schemas import SearchFilters
+from .ai.schemas import LANDED_TYPES, SearchFilters
 
 
 @contextmanager
@@ -22,8 +22,10 @@ def get_conn():
 
 
 LISTING_CARD_SQL = """
-SELECT l.listing_id, l.title, l.property_type, l.location, l.bedrooms, l.bathrooms,
-       l.size_sqft, l.price_listed AS price, l.features,
+SELECT l.listing_id, l.title, l.property_type, l.deal_type, l.location, l.state, l.bedrooms, l.bathrooms,
+       l.size_sqft, l.price_listed AS price, l.features, l.land_area_acres, l.ceiling_height_ft,
+       l.power_amps, l.power_kva, l.power_amps_equiv, l.tenure, l.lease_years_left, l.zoning,
+       l.container_access, l.loading_bays, l.latitude, l.longitude,
        pa.ad_id, pa.headline, pa.ad_text, pa.published_at,
        (SELECT file_name FROM listing_images i
          WHERE i.listing_id = l.listing_id ORDER BY position LIMIT 1) AS cover
@@ -36,40 +38,59 @@ WHERE l.status = 'published'
 """
 
 
-LANDED_TYPES = ["landed", "bungalow", "townhouse"]
-
-
 def _escape_like(s: str) -> str:
     return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def search_listings(conn, f: SearchFilters, limit: int = 50) -> list[dict]:
+def search_listings(conn, f: SearchFilters, limit: int = 60) -> list[dict]:
     where, params = [], []
-    if f.property_type:
-        # "landed" (a house) covers every landed type.
-        types = LANDED_TYPES if f.property_type == "landed" else [f.property_type]
-        where.append("l.property_type = ANY(%s)"); params.append(types)
-    if f.min_bedrooms is not None:
-        where.append("l.bedrooms >= %s"); params.append(f.min_bedrooms)
-    if f.max_bedrooms is not None:
-        where.append("l.bedrooms <= %s"); params.append(f.max_bedrooms)
-    if f.min_bathrooms is not None:
-        where.append("l.bathrooms >= %s"); params.append(f.min_bathrooms)
-    if f.min_price is not None:
-        where.append("l.price_listed >= %s"); params.append(f.min_price)
-    if f.max_price is not None:
-        where.append("l.price_listed <= %s"); params.append(f.max_price)
+
+    def add(sql, *values):
+        where.append(sql); params.extend(values)
+
+    if f.deal_type:
+        add("l.deal_type = %s", f.deal_type)
+    if f.property_types:
+        types = set(f.property_types)
+        if "landed" in types:  # "a house" covers every landed type
+            types |= set(LANDED_TYPES)
+        add("l.property_type = ANY(%s)", sorted(types))
     if f.location:
-        where.append("l.location ILIKE %s"); params.append(f"%{_escape_like(f.location)}%")
+        pat = f"%{_escape_like(f.location)}%"
+        add("(l.location ILIKE %s OR l.state ILIKE %s)", pat, pat)
+    if f.state:
+        add("l.state ILIKE %s", _escape_like(f.state))
+    if f.min_price is not None:
+        add("l.price_listed >= %s", f.min_price)
+    if f.max_price is not None:
+        add("l.price_listed <= %s", f.max_price)
+    if f.min_land_acres is not None:
+        add("l.land_area_acres >= %s", f.min_land_acres)
+    if f.max_land_acres is not None:
+        add("l.land_area_acres <= %s", f.max_land_acres)
+    if f.min_built_up_sqft is not None:
+        add("l.size_sqft >= %s", f.min_built_up_sqft)
+    if f.min_ceiling_ft is not None:
+        add("l.ceiling_height_ft >= %s", f.min_ceiling_ft)
+    if f.min_power_amps is not None:
+        add("l.power_amps_equiv >= %s", f.min_power_amps)  # amps, or kVA converted to amps
+    if f.tenure:
+        add("l.tenure = %s", f.tenure)
+    if f.zoning:
+        add("l.zoning = ANY(%s)", list(f.zoning))
+    if f.container_access:
+        add("l.container_access")
+    if f.min_loading_bays is not None:
+        add("l.loading_bays >= %s", f.min_loading_bays)
+    if f.min_bedrooms is not None:
+        add("l.bedrooms >= %s", f.min_bedrooms)
     for feat in f.features:
         # A feature counts if it is tagged on the card or mentioned in the ad.
         pat = f"%{_escape_like(feat.lower().strip())}%"
-        where.append("(EXISTS (SELECT 1 FROM unnest(l.features) t WHERE t ILIKE %s) OR pa.ad_text ILIKE %s)")
-        params += [pat, pat]
+        add("(EXISTS (SELECT 1 FROM unnest(l.features) t WHERE t ILIKE %s) OR pa.ad_text ILIKE %s)", pat, pat)
     if f.keywords:
         pat = f"%{_escape_like(f.keywords)}%"
-        where.append("(pa.ad_text ILIKE %s OR pa.headline ILIKE %s OR l.title ILIKE %s)")
-        params += [pat, pat, pat]
+        add("(pa.ad_text ILIKE %s OR pa.headline ILIKE %s OR l.title ILIKE %s)", pat, pat, pat)
 
     sql = LISTING_CARD_SQL + "".join(f" AND {w}" for w in where) + " ORDER BY pa.published_at DESC LIMIT %s"
     return conn.execute(sql, [*params, limit]).fetchall()
