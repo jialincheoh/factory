@@ -45,7 +45,8 @@ async def security_headers(request: Request, call_next):
         f"default-src 'self'; img-src 'self' data: {MAP_TILES}; style-src 'self'; script-src 'self'; "
         "frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Referrer-Policy"] = "same-origin"
+    # OpenStreetMap refuses tiles without a Referer; send only our origin, never the page path.
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
 
 

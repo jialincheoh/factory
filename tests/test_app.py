@@ -222,6 +222,7 @@ def test_security_headers():
     r = TestClient(app).get("/")
     assert "default-src 'self'" in r.headers["content-security-policy"]
     assert r.headers["x-content-type-options"] == "nosniff"
+    assert r.headers["referrer-policy"] == "strict-origin-when-cross-origin"  # map tiles need an origin
 
 
 def test_edit_distance():
