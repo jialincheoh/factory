@@ -219,3 +219,16 @@ details summary { cursor: pointer; color: var(--muted); }
 .footer-links a:hover { text-decoration: underline; }
 .footer-links.main { padding-top: 1rem; border-top: 1px solid var(--line); }
 .related { margin-top: 2rem; }
+
+/* Chat as a full-width search panel above the filters; results use the full width. */
+.portal-body { grid-template-columns: 1fr; }
+.chat { position: static; margin-bottom: 1rem; display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 1.6fr);
+  gap: .25rem 1.5rem; align-items: center; }
+.chat-intro h2 { margin: 0 0 .25rem; }
+.chat-intro p { margin: 0; }
+.chat-form { margin-top: 0; }
+.chat-form input { font-size: 1.05rem; padding: .7rem .9rem; }
+.chat-log, #chat-reset { grid-column: 1 / -1; }
+.chat-log { max-height: 30vh; margin: .75rem 0 0; }
+#chat-reset { justify-self: start; }
+@media (max-width: 860px) { .chat { grid-template-columns: 1fr; } .chat-form { margin-top: .5rem; } }

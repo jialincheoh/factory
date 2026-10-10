@@ -6,18 +6,20 @@
   <h1>{{ heading or "Factories, warehouses and land across Malaysia" }}</h1>
   <p class="muted">{{ intro or "Search by specs that matter to your operations: power supply, ceiling height, land size, tenure and container access." }}</p>
 </section>
-{% include "portal/_filters.html" %}
-<div class="portal-body">
-  <section class="chat" aria-label="Search assistant">
+<section class="chat" aria-label="Search assistant">
+  <div class="chat-intro">
     <h2>Describe what you need</h2>
     <p class="muted small">Try “Factory in Shah Alam with 400 amp power and container access” or “tanah industri di Johor 5 ekar”, then refine: “freehold only”.</p>
-    <div id="chat-log" class="chat-log" aria-live="polite"></div>
-    <form id="chat-form" class="chat-form">
-      <input id="chat-input" name="q" autocomplete="off" maxlength="1000" placeholder="What are you looking for?" required>
-      <button type="submit">Ask</button>
-    </form>
-    <button id="chat-reset" class="linklike" type="button" hidden>Start over</button>
-  </section>
+  </div>
+  <form id="chat-form" class="chat-form">
+    <input id="chat-input" name="q" autocomplete="off" maxlength="1000" placeholder="What are you looking for?" required>
+    <button type="submit">Ask</button>
+  </form>
+  <div id="chat-log" class="chat-log" aria-live="polite"></div>
+  <button id="chat-reset" class="linklike" type="button" hidden>Start over</button>
+</section>
+{% include "portal/_filters.html" %}
+<div class="portal-body">
   <section class="results">
     <div class="results-head">
       <h2 id="results-heading">{% if heading %}{{ listings | length }} listing{{ "" if listings | length == 1 else "s" }}{% elif filtered %}{{ listings | length }} matching listing{{ "" if listings | length == 1 else "s" }}{% else %}Latest listings{% endif %}</h2>
