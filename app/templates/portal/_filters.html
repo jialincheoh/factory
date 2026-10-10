@@ -28,23 +28,28 @@
   <label>Max price ({{ currency }})
     <input name="max_price" inputmode="numeric" value="{{ form.max_price }}" placeholder="Any">
   </label>
-  <label>Min land (acres)
-    <input name="min_acres" inputmode="decimal" value="{{ form.min_acres }}" placeholder="Any">
-  </label>
-  <label>Min power (A)
-    <input name="min_power" inputmode="numeric" value="{{ form.min_power }}" placeholder="Any" title="Three-phase supply in amps. Listings quoted in kVA are converted (1 kVA ≈ 1.39 A).">
-  </label>
-  <label>Min ceiling (ft)
-    <input name="min_ceiling" inputmode="decimal" value="{{ form.min_ceiling }}" placeholder="Any">
-  </label>
-  <label>Tenure
-    <select name="tenure">
-      <option value="">Any</option>
-      <option value="freehold" {% if form.tenure == "freehold" %}selected{% endif %}>Freehold</option>
-      <option value="leasehold" {% if form.tenure == "leasehold" %}selected{% endif %}>Leasehold</option>
-    </select>
-  </label>
-  <label class="check"><input type="checkbox" name="container" value="1" {% if form.container %}checked{% endif %}> Container access</label>
+  <details class="more" {% if form.min_acres or form.min_power or form.min_ceiling or form.tenure or form.container %}open{% endif %}>
+    <summary>More filters</summary>
+    <div class="more-grid">
+    <label>Min land (acres)
+      <input name="min_acres" inputmode="decimal" value="{{ form.min_acres }}" placeholder="Any">
+    </label>
+    <label>Min power (A)
+      <input name="min_power" inputmode="numeric" value="{{ form.min_power }}" placeholder="Any" title="Three-phase supply in amps. Listings quoted in kVA are converted (1 kVA ≈ 1.39 A).">
+    </label>
+    <label>Min ceiling (ft)
+      <input name="min_ceiling" inputmode="decimal" value="{{ form.min_ceiling }}" placeholder="Any">
+    </label>
+    <label>Tenure
+      <select name="tenure">
+        <option value="">Any</option>
+        <option value="freehold" {% if form.tenure == "freehold" %}selected{% endif %}>Freehold</option>
+        <option value="leasehold" {% if form.tenure == "leasehold" %}selected{% endif %}>Leasehold</option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" name="container" value="1" {% if form.container %}checked{% endif %}> Container access</label>
+    </div>
+  </details>
   <div class="filter-actions">
     <button type="submit">Apply</button>
     <a href="/" class="linklike" id="filter-clear">Clear</a>

@@ -3,20 +3,18 @@
 {% block head_extra %}{% include "_map_assets.html" %}{% endblock %}
 {% block content %}
 <section class="hero">
-  <h1>{{ heading or "Factories, warehouses and land across Malaysia" }}</h1>
-  <p class="muted">{{ intro or "Search by specs that matter to your operations: power supply, ceiling height, land size, tenure and container access." }}</p>
-</section>
-<section class="chat" aria-label="Search assistant">
-  <div class="chat-intro">
-    <h2>Describe what you need</h2>
-    <p class="muted small">Try “Factory in Shah Alam with 400 amp power and container access” or “tanah industri di Johor 5 ekar”, then refine: “freehold only”.</p>
+  <p class="kicker">Factories · Warehouses · Land · Malaysia</p>
+  <h1>{{ heading or "Industrial property, found by what it can do." }}</h1>
+  <p class="lede">{{ intro or "Describe the space your business needs, from power supply and ceiling height to land size and container access, and see only the properties that fit." }}</p>
+  <div class="chat" aria-label="Search assistant">
+    <form id="chat-form" class="chat-form">
+      <input id="chat-input" name="q" autocomplete="off" maxlength="1000" placeholder="e.g. Factory in Shah Alam with 400 amp power and container access" required aria-label="Describe what you need">
+      <button type="submit">Search</button>
+    </form>
+    <p class="hint">Or in Malay: “tanah industri di Johor 5 ekar”. Refine as you go: “freehold only”.</p>
+    <div id="chat-log" class="chat-log" aria-live="polite"></div>
+    <button id="chat-reset" class="linklike" type="button" hidden>Start over</button>
   </div>
-  <form id="chat-form" class="chat-form">
-    <input id="chat-input" name="q" autocomplete="off" maxlength="1000" placeholder="What are you looking for?" required>
-    <button type="submit">Ask</button>
-  </form>
-  <div id="chat-log" class="chat-log" aria-live="polite"></div>
-  <button id="chat-reset" class="linklike" type="button" hidden>Start over</button>
 </section>
 {% include "portal/_filters.html" %}
 <div class="portal-body">

@@ -25,7 +25,8 @@
 </head>
 <body class="{% block body_class %}{% endblock %}">
 <header class="topbar">
-  <a class="brand" href="/">Homefinder <span>Industrial</span></a>
+  <div class="topbar-inner">
+  <a class="brand" href="/"><span class="wordmark">Homefinder</span><span class="sub">Industrial</span></a>
   <nav aria-label="Main">
     <a href="/factory-for-sale">Factories for sale</a>
     <a href="/factory-for-rent">For rent</a>
@@ -42,6 +43,7 @@
       <a href="/agent/login" rel="nofollow">For agents</a>
     {% endif %}
   </nav>
+  </div>
 </header>
 {% if offline %}
 <div class="banner">Offline mode: no language model is configured, so photos are not checked and search uses simple keyword rules.</div>

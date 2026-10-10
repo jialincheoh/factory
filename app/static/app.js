@@ -20,7 +20,7 @@
     return map;
   }
 
-  const pinStyle = { radius: 9, weight: 2, color: "#ffffff", fillColor: "#1f5c4a", fillOpacity: 1 };
+  const pinStyle = { radius: 9, weight: 2, color: "#ffffff", fillColor: "#9a7b4f", fillOpacity: 1 };
 
   // ---------------------------------------------------------------- results map
   const mapNode = document.getElementById("results-map");
