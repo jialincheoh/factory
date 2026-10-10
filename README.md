@@ -74,6 +74,19 @@ A FastAPI app with server-rendered pages, the Postgres schema above, and LangCha
 - A chat box takes plain-language queries ("Factory in Shah Alam with 400 amp power and container access", then "freehold only"). The model calls a `search_listings` tool with structured filters (`SearchFilters`); the app runs a parameterised SQL query and shows the results as cards. The model never writes SQL and cannot invent listings.
 - Listing pages hide the agent's phone number behind a button. Impressions, page opens and phone reveals go to `ad_events`, and the agent's dashboard shows the counts per listing.
 
+**Search engine optimisation**
+
+- **Landing pages for real search phrases:** `/factory-for-sale/shah-alam`, `/warehouse-for-rent/port-klang`, `/industrial-land-for-sale/johor` and so on, for every type, deal, town and state with listings. Each has its own title, heading and an intro written from the live listings (count, price range, land sizes, power, tenure, plus the Malay phrase, e.g. *Kilang untuk dijual di Shah Alam*). Empty ones are `noindex`.
+- **Readable listing URLs** (`/listings/<id>/detached-factory-with-600a-power-in-shah-alam`); short or outdated links redirect permanently (301) to the one canonical URL.
+- **Every public page** has a title, meta description, canonical link, Open Graph and Twitter tags (the cover photo is the preview image), and `lang="en-MY"`.
+- **Structured data (JSON-LD):** `RealEstateListing` with price in MYR, address, map coordinates and specs on each listing; `BreadcrumbList` (eligible for breadcrumb rich results); `ItemList` on landing pages; `WebSite` on the home page.
+- **`/sitemap.xml`** lists the home page, every listing (with photos, for Google Images) and every landing page with listings. **`/robots.txt`** blocks `/agent` and `/api/` and points to the sitemap.
+- **Kept out of the index:** filter combinations (`/?min_power=...`, `noindex, follow`), agent pages (`X-Robots-Tag`), empty landing pages.
+- **Speed (Core Web Vitals):** gzip, year-long caching of versioned static files and photos, image dimensions to prevent layout shift, first photo loaded with high priority and the rest lazily, and the map library loaded only on pages with a map.
+- **Internal links:** breadcrumbs, "nearby" and "also in this area" links on landing pages, and a "popular searches" footer.
+
+Set `SITE_URL` to the real domain when deploying, then submit `https://<domain>/sitemap.xml` in Google Search Console.
+
 **Security measures**
 
 Argon2 password hashing with login throttling; signed, HttpOnly, SameSite session cookies, rotated on sign-in; CSRF tokens on every agent form; JSON-only or custom-header buyer endpoints; a strict Content-Security-Policy with no inline scripts; photos decoded and re-encoded on upload, which rejects non-images and strips EXIF (including GPS); unpublished photos served only to their owner; parameterised SQL throughout; agents can only see their own requests.

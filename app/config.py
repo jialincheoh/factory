@@ -43,4 +43,10 @@ SECURE_COOKIES = os.environ.get("SECURE_COOKIES", "1") != "0"
 UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", ROOT / "uploads"))
 MAX_IMAGES = 8
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
-CURRENCY = os.environ.get("CURRENCY", "$")
+CURRENCY = os.environ.get("CURRENCY", "RM")
+CURRENCY_CODE = os.environ.get("CURRENCY_CODE", "MYR")  # ISO 4217, for structured data
+
+# Public address of the site, used in canonical links, the sitemap and
+# structured data. Set it to the real domain (e.g. https://factory.my) when deploying.
+SITE_URL = os.environ.get("SITE_URL", "http://localhost:8000").rstrip("/")
+SITE_NAME = os.environ.get("SITE_NAME", "Homefinder Industrial")

@@ -1,21 +1,36 @@
 <!doctype html>
-<html lang="en">
+<html lang="en-MY">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Homefinder · Factories, warehouses and land in Malaysia{% endblock %}</title>
-  <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
-  <link rel="stylesheet" href="/static/style.css">
-  <script src="/static/vendor/leaflet/leaflet.js" defer></script>
-  <script src="/static/app.js" defer></script>
+  <title>{{ page.title or (SITE_NAME ~ " · Factories, warehouses and land in Malaysia") }}</title>
+  {% if page.description %}<meta name="description" content="{{ page.description }}">{% endif %}
+  <meta name="robots" content="{{ page.robots or 'noindex, nofollow' }}">
+  {% if page.canonical %}<link rel="canonical" href="{{ page.canonical }}">
+  <meta property="og:url" content="{{ page.canonical }}">{% endif %}
+  {% if page.title %}
+  <meta property="og:site_name" content="{{ SITE_NAME }}">
+  <meta property="og:type" content="{{ page.og_type or 'website' }}">
+  <meta property="og:title" content="{{ page.title }}">
+  {% if page.description %}<meta property="og:description" content="{{ page.description }}">{% endif %}
+  <meta property="og:locale" content="en_MY">
+  {% if page.og_image %}<meta property="og:image" content="{{ page.og_image }}">{% endif %}
+  <meta name="twitter:card" content="{{ 'summary_large_image' if page.og_image else 'summary' }}">
+  {% endif %}
+  {% for data in page.jsonld or [] %}<script type="application/ld+json">{{ seo_script(data) | safe }}</script>
+  {% endfor %}
+  <link rel="stylesheet" href="/static/style.css?v={{ static_version }}">
+  {% block head_extra %}{% endblock %}
+  <script src="/static/app.js?v={{ static_version }}" defer></script>
 </head>
 <body class="{% block body_class %}{% endblock %}">
 <header class="topbar">
   <a class="brand" href="/">Homefinder <span>Industrial</span></a>
-  <nav>
-    <a href="/?deal=sale">For sale</a>
-    <a href="/?deal=rent">For rent</a>
-    <a href="/?type=land">Land</a>
+  <nav aria-label="Main">
+    <a href="/factory-for-sale">Factories for sale</a>
+    <a href="/factory-for-rent">For rent</a>
+    <a href="/warehouse-for-rent">Warehouses</a>
+    <a href="/land-for-sale">Land</a>
     {% if agent_id %}
       <a href="/agent">My listings</a>
       <a class="button small" href="/agent/new">New listing</a>
@@ -24,7 +39,7 @@
         <button class="linklike" type="submit">Sign out</button>
       </form>
     {% else %}
-      <a href="/agent/login">For agents</a>
+      <a href="/agent/login" rel="nofollow">For agents</a>
     {% endif %}
   </nav>
 </header>
@@ -32,7 +47,28 @@
 <div class="banner">Offline mode: no language model is configured, so photos are not checked and search uses simple keyword rules.</div>
 {% endif %}
 <main class="{% block main_class %}page{% endblock %}">
+{% if crumbs %}
+<nav class="crumbs" aria-label="Breadcrumb"><ol>
+  {% for name, href in crumbs %}<li>{% if loop.last %}<span aria-current="page">{{ name }}</span>{% else %}<a href="{{ href }}">{{ name }}</a>{% endif %}</li>{% endfor %}
+</ol></nav>
+{% endif %}
 {% block content %}{% endblock %}
 </main>
+<footer class="footer">
+  {% if footer %}
+  <h2>Popular searches</h2>
+  <ul class="footer-links">{% for text, href in footer %}<li><a href="{{ href }}">{{ text }}</a></li>{% endfor %}</ul>
+  {% endif %}
+  <ul class="footer-links main">
+    <li><a href="/factory-for-sale">Factories for sale in Malaysia</a></li>
+    <li><a href="/factory-for-rent">Factories for rent</a></li>
+    <li><a href="/warehouse-for-sale">Warehouses for sale</a></li>
+    <li><a href="/warehouse-for-rent">Warehouses for rent</a></li>
+    <li><a href="/industrial-land-for-sale">Industrial land for sale</a></li>
+    <li><a href="/commercial-land-for-sale">Commercial land</a></li>
+    <li><a href="/agricultural-land-for-sale">Agricultural land</a></li>
+  </ul>
+  <p class="muted small">Kilang, gudang dan tanah industri untuk dijual dan disewa di seluruh Malaysia.</p>
+</footer>
 </body>
 </html>

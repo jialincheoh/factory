@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% block title %}My listings · Homefinder{% endblock %}
 {% block content %}
 <div class="row-between">
   <h1>{{ agent.display_name }}’s listings</h1>
@@ -12,7 +11,7 @@
   {% for l in listings %}
     <tr>
       <td>
-        {% if l.status == 'published' %}<a href="/listings/{{ l.listing_id }}">{{ l.title }}</a>
+        {% if l.status == 'published' %}<a href="{{ listing_path(l) }}">{{ l.title }}</a>
         {% else %}<a href="/agent/requests/{{ l.latest_request }}">Untitled draft</a>{% endif %}
       </td>
       <td><span class="status {{ l.status }}">{{ l.status }}</span></td>

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Review drafts · Homefinder{% endblock %}
+{% block head_extra %}{% include "_map_assets.html" %}{% endblock %}
 {% block content %}
 <h1>Review before publishing</h1>
 <div class="thumbs large">{% for p in photos %}<img src="/uploads/{{ p.file_name }}" alt="Photo {{ loop.index }}">{% endfor %}</div>

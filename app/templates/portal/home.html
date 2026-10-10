@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 {% block main_class %}portal{% endblock %}
+{% block head_extra %}{% include "_map_assets.html" %}{% endblock %}
 {% block content %}
 <section class="hero">
-  <h1>Factories, warehouses and land across Malaysia</h1>
-  <p class="muted">Search by specs that matter to your operations: power supply, ceiling height, land size, tenure and container access.</p>
+  <h1>{{ heading or "Factories, warehouses and land across Malaysia" }}</h1>
+  <p class="muted">{{ intro or "Search by specs that matter to your operations: power supply, ceiling height, land size, tenure and container access." }}</p>
 </section>
 {% include "portal/_filters.html" %}
 <div class="portal-body">
@@ -19,7 +20,7 @@
   </section>
   <section class="results">
     <div class="results-head">
-      <h2 id="results-heading">{% if filtered %}{{ listings | length }} matching listing{{ "" if listings | length == 1 else "s" }}{% else %}Latest listings{% endif %}</h2>
+      <h2 id="results-heading">{% if heading %}{{ listings | length }} listing{{ "" if listings | length == 1 else "s" }}{% elif filtered %}{{ listings | length }} matching listing{{ "" if listings | length == 1 else "s" }}{% else %}Latest listings{% endif %}</h2>
       <div class="view-toggle" role="group" aria-label="View">
         <button type="button" class="toggle active" data-view="split">Map + list</button>
         <button type="button" class="toggle" data-view="list">List only</button>
@@ -28,6 +29,12 @@
     <div id="results-map" class="results-map" data-tiles="{{ MAP_TILES }}"></div>
     <script type="application/json" id="markers-data">{{ markers | tojson }}</script>
     <div id="results" class="grid">{% include "portal/_cards.html" %}</div>
+    {% if related_places or related_types %}
+    <nav class="related" aria-label="Related searches">
+      {% if related_places %}<h2>Nearby</h2><ul class="footer-links">{% for t, h in related_places %}<li><a href="{{ h }}">{{ t }}</a></li>{% endfor %}</ul>{% endif %}
+      {% if related_types %}<h2>Also in this area</h2><ul class="footer-links">{% for t, h in related_types %}<li><a href="{{ h }}">{{ t }}</a></li>{% endfor %}</ul>{% endif %}
+    </nav>
+    {% endif %}
   </section>
 </div>
 {% endblock %}

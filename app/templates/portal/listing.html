@@ -1,13 +1,12 @@
 {% extends "base.html" %}
-{% block title %}{{ listing.title }} · Homefinder{% endblock %}
+{% block head_extra %}{% include "_map_assets.html" %}{% endblock %}
 {% block content %}
-<a class="back" href="/">← All listings</a>
 <article class="listing">
   {% if photos %}
   <div class="viewer" id="viewer" data-count="{{ photos | length }}">
     <div class="viewer-stage">
       {% for p in photos %}
-      <img src="/uploads/{{ p.file_name }}" alt="Photo {{ loop.index }} of {{ listing.title }}" class="viewer-img{% if loop.first %} active{% endif %}" data-index="{{ loop.index0 }}">
+      <img src="/uploads/{{ p.file_name }}" width="{{ p.width }}" height="{{ p.height }}" alt="{{ listing.title }}, photo {{ loop.index }} of {{ photos | length }}" class="viewer-img{% if loop.first %} active{% endif %}" data-index="{{ loop.index0 }}" {% if loop.first %}fetchpriority="high"{% else %}loading="lazy"{% endif %}>
       {% endfor %}
       {% if photos | length > 1 %}
       <button type="button" class="viewer-nav prev" aria-label="Previous photo">‹</button>
@@ -19,7 +18,7 @@
     {% if photos | length > 1 %}
     <div class="viewer-thumbs">
       {% for p in photos %}
-      <button type="button" class="thumb{% if loop.first %} active{% endif %}" data-index="{{ loop.index0 }}" aria-label="Show photo {{ loop.index }}"><img src="/uploads/{{ p.file_name }}" alt=""></button>
+      <button type="button" class="thumb{% if loop.first %} active{% endif %}" data-index="{{ loop.index0 }}" aria-label="Show photo {{ loop.index }}"><img src="/uploads/{{ p.file_name }}" width="96" height="64" alt="" loading="lazy"></button>
       {% endfor %}
     </div>
     {% endif %}

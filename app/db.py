@@ -27,13 +27,16 @@ SELECT l.listing_id, l.title, l.property_type, l.deal_type, l.location, l.state,
        l.power_amps, l.power_kva, l.power_amps_equiv, l.tenure, l.lease_years_left, l.zoning,
        l.container_access, l.loading_bays, l.latitude, l.longitude,
        pa.ad_id, pa.headline, pa.ad_text, pa.published_at,
-       (SELECT file_name FROM listing_images i
-         WHERE i.listing_id = l.listing_id ORDER BY position LIMIT 1) AS cover
+       ci.file_name AS cover, ci.width AS cover_width, ci.height AS cover_height
 FROM listings l
 JOIN LATERAL (
   SELECT * FROM published_ads p WHERE p.listing_id = l.listing_id
   ORDER BY published_at DESC LIMIT 1
 ) pa ON true
+LEFT JOIN LATERAL (
+  SELECT file_name, width, height FROM listing_images i
+  WHERE i.listing_id = l.listing_id ORDER BY position LIMIT 1
+) ci ON true
 WHERE l.status = 'published'
 """
 

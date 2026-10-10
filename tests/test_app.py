@@ -126,7 +126,8 @@ def test_full_flow(agent):
     r = client.post(f"/agent/requests/{request_id}/publish", data=form, follow_redirects=False)
     assert r.status_code == 303, r.text
     listing_url = r.headers["location"]
-    listing_id = listing_url.rsplit("/", 1)[1]
+    assert listing_url.endswith("/freehold-factory-with-400a-in-shah-alam")  # readable URL
+    listing_id = re.search(r"/listings/([0-9a-f-]{36})/", listing_url)[1]
     d = db_one("SELECT decision_type, kept_candidate_id, edit_distance FROM decisions WHERE request_id = %s", [request_id])
     assert d[0] == "kept" and str(d[1]) == cand_id and d[2] > 0
     row = db_one("SELECT tenure, lease_years_left, container_access, latitude, features FROM listings "
@@ -228,3 +229,37 @@ def test_security_headers():
 def test_edit_distance():
     assert edit_distance("kitten", "sitting") == 3
     assert edit_distance("", "abc") == 3
+
+
+def test_seo_pages(warehouses):
+    client = TestClient(app)
+    lid = warehouses["kva"]
+
+    # Short and mistyped listing URLs redirect permanently to the one canonical URL.
+    r = client.get(f"/listings/{lid}", follow_redirects=False)
+    assert r.status_code == 301 and r.headers["location"] == f"/listings/{lid}/test-warehouse-kva"
+    assert client.get(f"/listings/{lid}/wrong-slug", follow_redirects=False).status_code == 301
+
+    page = client.get(f"/listings/{lid}/test-warehouse-kva").text
+    assert '<link rel="canonical" href="http://localhost:8000/listings/' in page
+    assert '"@type": "RealEstateListing"' in page and '"priceCurrency": "MYR"' in page
+    assert '"@type": "BreadcrumbList"' in page and 'content="index, follow"' in page
+
+    # Landing page for a real search phrase, with a data-driven intro and breadcrumbs.
+    page = client.get("/warehouse-for-rent/port-klang").text
+    assert "<h1>Warehouses for rent in Port Klang</h1>" in page
+    assert "2 listings available now" in page and "Gudang untuk disewa di Port Klang" in page
+    assert 'href="/warehouse-for-rent/selangor"' in page  # breadcrumb up to the state page
+    assert client.get("/warehouse-for-rent/atlantis").status_code == 404
+    assert client.get("/castles-for-sale").status_code == 404
+    # Empty landing pages are kept out of the index.
+    assert 'content="noindex, follow"' in client.get("/agricultural-land-for-sale/perlis").text
+
+    # Filtered views and agent pages are not indexed.
+    assert 'content="noindex, follow"' in client.get("/?min_power=100").text
+    assert client.get("/agent/login").headers["x-robots-tag"] == "noindex, nofollow"
+
+    sitemap = client.get("/sitemap.xml").text
+    assert f"/listings/{lid}/test-warehouse-kva</loc>" in sitemap and "/warehouse-for-rent/port-klang</loc>" in sitemap
+    robots = client.get("/robots.txt").text
+    assert "Disallow: /agent" in robots and "Sitemap: http://localhost:8000/sitemap.xml" in robots

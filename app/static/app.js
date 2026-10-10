@@ -34,7 +34,7 @@
     for (const m of markers) {
       const popup = el("div", "map-popup");
       const link = el("a", "", m.title);
-      link.href = "/listings/" + m.id;
+      link.href = m.url;
       popup.append(link, el("div", "map-popup-price", m.price));
       L.circleMarker([m.lat, m.lng], pinStyle).bindPopup(popup).addTo(markerLayer);
       bounds.push([m.lat, m.lng]);

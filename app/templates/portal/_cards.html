@@ -1,7 +1,7 @@
 {% for l in listings %}
-<a class="card" href="/listings/{{ l.listing_id }}" data-id="{{ l.listing_id }}">
+<a class="card" href="{{ listing_path(l) }}" data-id="{{ l.listing_id }}">
   <div class="card-media">
-    {% if l.cover %}<img src="/uploads/{{ l.cover }}" alt="" loading="lazy">{% else %}<div class="noimg"></div>{% endif %}
+    {% if l.cover %}<img src="/uploads/{{ l.cover }}" {% if l.cover_width %}width="{{ l.cover_width }}" height="{{ l.cover_height }}"{% endif %} alt="{{ l.title }}" loading="lazy">{% else %}<div class="noimg"></div>{% endif %}
     <span class="badge {{ l.deal_type }}">{{ "For rent" if l.deal_type == "rent" else "For sale" }}</span>
   </div>
   <div class="card-body">

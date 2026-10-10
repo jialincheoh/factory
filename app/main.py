@@ -7,14 +7,15 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from psycopg.types.json import Jsonb
 from starlette.concurrency import run_in_threadpool
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import config, db, geo, images, security
+from . import config, db, geo, images, security, seo
 from .ai import get_assistant
 from .ai.llm import PROMPT_VERSION
 from .ai.schemas import LAND_TYPES, PROPERTY_TYPES, ZONINGS, SearchFilters
@@ -30,7 +31,11 @@ app.add_middleware(
     https_only=config.SECURE_COOKIES,
     max_age=8 * 3600,
 )
-app.mount("/static", StaticFiles(directory=config.ROOT / "app" / "static"), name="static")
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+STATIC_DIR = config.ROOT / "app" / "static"
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+# Changes whenever a static file changes, so browsers can cache /static for a year.
+STATIC_VERSION = str(int(max(f.stat().st_mtime for f in STATIC_DIR.rglob("*") if f.is_file())))
 templates = Jinja2Templates(directory=config.ROOT / "app" / "templates")  # autoescapes HTML
 
 
@@ -45,6 +50,13 @@ async def security_headers(request: Request, call_next):
         f"default-src 'self'; img-src 'self' data: {MAP_TILES}; style-src 'self'; script-src 'self'; "
         "frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
     response.headers["X-Content-Type-Options"] = "nosniff"
+    path = request.url.path
+    if path.startswith("/static/") and request.query_params.get("v") == STATIC_VERSION:
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif path.startswith("/uploads/") and response.status_code == 200:
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"  # random, never-reused names
+    if path.startswith(("/agent", "/api/")):
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
     # OpenStreetMap refuses tiles without a Referer; send only our origin, never the page path.
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
@@ -72,12 +84,44 @@ def number(value, digits: int = 0) -> str:
 
 templates.env.filters.update(money=money, price_label=price_label, type_label=type_label, number=number)
 templates.env.globals.update(STATES=geo.STATES, AREAS=sorted(geo.AREAS), PROPERTY_TYPES=PROPERTY_TYPES,
-                             ZONINGS=ZONINGS, MAP_TILES=MAP_TILES, currency=config.CURRENCY)
+                             ZONINGS=ZONINGS, MAP_TILES=MAP_TILES, currency=config.CURRENCY,
+                             SITE_NAME=config.SITE_NAME, listing_path=seo.listing_path, absolute=seo.absolute,
+                             seo_script=seo.to_script,
+                             static_version=STATIC_VERSION)
+
+
+_footer_cache: dict = {"at": 0.0, "links": []}
+
+
+def footer_links() -> list[tuple[str, str]]:
+    """Links to landing pages that have listings, for crawlers and people. Cached for 5 minutes."""
+    if time.time() - _footer_cache["at"] < 300:
+        return _footer_cache["links"]
+    links = []
+    try:
+        with db.connect() as conn:
+            rows = conn.execute("SELECT property_type, deal_type, location, state, count(*) AS n FROM listings "
+                                "WHERE status = 'published' GROUP BY 1, 2, 3, 4 ORDER BY n DESC").fetchall()
+        seen = set()
+        for r in rows:
+            path = seo.landing_path(r)
+            if not path:
+                continue
+            heading = seo.LANDING[path][2]
+            for place in (r["location"], r["state"]):
+                if place and seo.place_from_slug(seo.slugify(place)) and (path, place) not in seen:
+                    seen.add((path, place))
+                    links.append((f"{heading} in {place}", f"/{path}/{seo.slugify(place)}"))
+    except Exception:
+        pass  # the footer must never break a page
+    _footer_cache.update(at=time.time(), links=links[:40])
+    return _footer_cache["links"]
 
 
 def render(request: Request, name: str, status_code: int = 200, **ctx):
+    ctx.setdefault("page", {})
     ctx.update(agent_id=security.current_agent_id(request), csrf=security.csrf_token(request),
-               offline=config.LLM_MODEL == "offline")
+               offline=config.LLM_MODEL == "offline", footer=footer_links())
     return templates.TemplateResponse(request, name, ctx, status_code=status_code)
 
 
@@ -141,7 +185,7 @@ def results_payload(results: list[dict]) -> dict:
     return {
         "count": len(results),
         "html": templates.get_template("portal/_cards.html").render(listings=results),
-        "markers": [{"id": str(r["listing_id"]), "lat": r["latitude"], "lng": r["longitude"],
+        "markers": [{"id": str(r["listing_id"]), "url": seo.listing_path(r), "lat": r["latitude"], "lng": r["longitude"],
                      "title": r["title"], "price": price_label(r)}
                     for r in results if r["latitude"] is not None],
     }
@@ -153,8 +197,18 @@ def home(request: Request, conn=Depends(db.get_conn)):
     listings = db.search_listings(conn, filters)
     log_events(conn, [l["ad_id"] for l in listings], "impression")
     payload = results_payload(listings)
+    filtered = bool(request.query_params)
+    page = {
+        "title": f"Factories, Warehouses & Industrial Land for Sale and Rent in Malaysia | {config.SITE_NAME}",
+        "description": "Search factories, warehouses and industrial land across Malaysia by power supply, ceiling "
+                       "height, land size, tenure and container access. Kilang, gudang dan tanah industri.",
+        "canonical": seo.absolute("/"),
+        # Filter combinations are endless; keep them out of the index but let crawlers follow the links.
+        "robots": "noindex, follow" if filtered else "index, follow",
+        "jsonld": [seo.site_jsonld()],
+    }
     return render(request, "portal/home.html", listings=listings, form=form_from_filters(filters),
-                  filtered=bool(request.query_params), markers=payload["markers"])
+                  filtered=filtered, markers=payload["markers"], page=page)
 
 
 async def _json_body(request: Request) -> dict:
@@ -209,16 +263,59 @@ async def chat(request: Request):
     return out
 
 
-@app.get("/listings/{listing_id}", response_class=HTMLResponse)
-def listing_page(listing_id: uuid.UUID, request: Request, conn=Depends(db.get_conn)):
+def _published_listing(conn, listing_id):
     rows = conn.execute(db.LISTING_CARD_SQL + " AND l.listing_id = %s", [listing_id]).fetchall()
     if not rows:
         raise HTTPException(404)
-    listing = rows[0]
-    photos = conn.execute("SELECT file_name FROM listing_images WHERE listing_id = %s ORDER BY position",
+    return rows[0]
+
+
+@app.get("/listings/{listing_id}")
+def listing_short_url(listing_id: uuid.UUID, conn=Depends(db.get_conn)):
+    """Old and short links redirect permanently to the readable URL."""
+    return RedirectResponse(seo.listing_path(_published_listing(conn, listing_id)), status_code=301)
+
+
+@app.get("/listings/{listing_id}/{slug}", response_class=HTMLResponse)
+def listing_page(listing_id: uuid.UUID, slug: str, request: Request, conn=Depends(db.get_conn)):
+    listing = _published_listing(conn, listing_id)
+    path = seo.listing_path(listing)
+    if request.url.path != path:  # title changed or slug mistyped: one canonical URL
+        return RedirectResponse(path, status_code=301)
+    photos = conn.execute("SELECT file_name, width, height FROM listing_images WHERE listing_id = %s ORDER BY position",
                           [listing_id]).fetchall()
     log_events(conn, [listing["ad_id"]], "click")
-    return render(request, "portal/listing.html", listing=listing, photos=photos)
+
+    kind = type_label(listing["property_type"])
+    deal = "for rent" if listing["deal_type"] == "rent" else "for sale"
+    where = ", ".join(dict.fromkeys(p for p in (listing["location"], listing["state"]) if p))  # dedupe, keep order
+    specs = [s for s in (
+        f"{number(listing['land_area_acres'], 2)} acres" if listing["land_area_acres"] else None,
+        f"{number(listing['size_sqft'])} sqft built-up" if listing["size_sqft"] else None,
+        f"{number(listing['power_amps'])}A" if listing["power_amps"] else (f"{number(listing['power_kva'])} kVA" if listing["power_kva"] else None),
+        f"{number(listing['ceiling_height_ft'], 1)} ft ceiling" if listing["ceiling_height_ft"] else None,
+        listing["tenure"],
+        "container access" if listing["container_access"] else None,
+    ) if s]
+    crumbs = [("Home", "/")]
+    landing = seo.landing_path(listing)
+    if landing:
+        crumbs.append((seo.LANDING[landing][2], f"/{landing}"))
+        for place in (listing["state"], listing["location"]):
+            if place and seo.place_from_slug(seo.slugify(place)) and place != (crumbs[-1][0].split(" in ")[-1]):
+                crumbs.append((f"{seo.LANDING[landing][2]} in {place}", f"/{landing}/{seo.slugify(place)}"))
+    crumbs.append((listing["title"], path))
+    page = {
+        "title": f"{listing['title']} – {price_label(listing)} | {config.SITE_NAME}",
+        "description": f"{kind} {deal}{' in ' + where if where else ''}: {', '.join(specs) or 'see specifications'}. "
+                       "View photos, full specifications and the map.",
+        "canonical": seo.absolute(path),
+        "robots": "index, follow",
+        "og_image": seo.absolute(f"/uploads/{photos[0]['file_name']}") if photos else None,
+        "og_type": "article",
+        "jsonld": [seo.listing_jsonld(listing, [p["file_name"] for p in photos]), seo.breadcrumbs(crumbs)],
+    }
+    return render(request, "portal/listing.html", listing=listing, photos=photos, page=page, crumbs=crumbs)
 
 
 @app.post("/api/listings/{listing_id}/phone")
@@ -526,7 +623,7 @@ async def publish(request_id: uuid.UUID, request: Request, agent_id: str = Depen
                  "VALUES (%s,%s,%s,'own_portal',now(),%s,%s)",
                  [uuid.uuid4(), request_id, req["listing_id"], headline, body])
     conn.commit()  # before redirecting, so the listing page sees it
-    return RedirectResponse(f"/listings/{req['listing_id']}", status_code=303)
+    return RedirectResponse(seo.listing_path({"listing_id": req["listing_id"], "title": card["title"]}), status_code=303)
 
 
 @app.post("/agent/requests/{request_id}/regenerate")
@@ -548,3 +645,144 @@ async def regenerate(request_id: uuid.UUID, request: Request, agent_id: str = De
 
     new_id = await run_in_threadpool(run)
     return RedirectResponse(f"/agent/requests/{new_id}", status_code=303)
+
+
+# ------------------------------------------------------------------ SEO
+# Registered last so these catch-all paths never shadow the routes above.
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+def robots_txt():
+    return (f"User-agent: *\nDisallow: /agent\nDisallow: /api/\n\nSitemap: {seo.absolute('/sitemap.xml')}\n")
+
+
+def _xml(text) -> str:
+    return (str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;"))
+
+
+@app.get("/sitemap.xml")
+def sitemap(conn=Depends(db.get_conn)):
+    listings = conn.execute(
+        "SELECT l.listing_id, l.title, l.property_type, l.deal_type, l.location, l.state, "
+        "greatest(l.updated_at, max(p.published_at)) AS modified, "
+        "array_agg(DISTINCT i.file_name) FILTER (WHERE i.file_name IS NOT NULL) AS photos "
+        "FROM listings l JOIN published_ads p USING (listing_id) LEFT JOIN listing_images i USING (listing_id) "
+        "WHERE l.status = 'published' GROUP BY l.listing_id").fetchall()
+    urls = [("/", None, [])]
+    landings = {}
+    for l in listings:
+        urls.append((seo.listing_path(l), l["modified"], l["photos"] or []))
+        path = seo.landing_path(l)
+        if path:
+            for key in {f"/{path}"} | {f"/{path}/{seo.slugify(pl)}" for pl in (l["location"], l["state"])
+                                         if pl and seo.place_from_slug(seo.slugify(pl))}:
+                landings[key] = max(filter(None, [landings.get(key), l["modified"]]))
+    urls += [(path, modified, []) for path, modified in sorted(landings.items())]
+
+    out = ['<?xml version="1.0" encoding="UTF-8"?>',
+           '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" '
+           'xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">']
+    for path, modified, photos in urls:
+        out.append(f"<url><loc>{_xml(seo.absolute(path))}</loc>"
+                   + (f"<lastmod>{modified.date().isoformat()}</lastmod>" if modified else "")
+                   + "".join(f"<image:image><image:loc>{_xml(seo.absolute('/uploads/' + f))}</image:loc></image:image>"
+                             for f in photos)
+                   + "</url>")
+    out.append("</urlset>")
+    return Response("\n".join(out), media_type="application/xml")
+
+
+def _range(values, fmt):
+    values = sorted(v for v in values if v is not None)
+    if not values:
+        return None
+    lo, hi = fmt(values[0]), fmt(values[-1])
+    return lo if lo == hi else f"{lo} to {hi}"
+
+
+def landing_intro(heading: str, place: str, malay: str, listings: list[dict]) -> str:
+    """A short summary built from the live listings, so each landing page says something specific."""
+    n = len(listings)
+    if not n:
+        return (f"There are no {heading.lower()} in {place} listed right now. "
+                "Try a nearby area, or describe what you need in the search box and we will show the closest matches.")
+    parts = [f"{heading} in {place}: {n} listing{'s' if n != 1 else ''} available now."]
+    price = _range([float(l["price"]) for l in listings if l["price"]], lambda v: money(v))
+    if price:
+        parts.append(f"Asking {'rent' if 'rent' in heading else 'price'}: {price}{' per month' if 'rent' in heading else ''}.")
+    land = _range([float(l["land_area_acres"]) for l in listings if l["land_area_acres"]], lambda v: number(v, 2))
+    if land:
+        parts.append(f"Land sizes: {land} acres.")
+    power = _range([l["power_amps_equiv"] for l in listings], lambda v: f"{number(v)} A")
+    if power:
+        parts.append(f"Power supply: {power}.")
+    freehold = sum(1 for l in listings if l["tenure"] == "freehold")
+    if freehold:
+        parts.append("All freehold." if freehold == n else f"{freehold} of {n} freehold.")
+    container = sum(1 for l in listings if l["container_access"])
+    if container:
+        parts.append("All with 40-ft container access." if container == n else f"{container} with 40-ft container access.")
+    parts.append(f"{malay} di {place}.")
+    return " ".join(parts)
+
+
+def _landing(request: Request, conn, key: str, place_slug: str | None):
+    if key not in seo.LANDING:
+        raise HTTPException(404)
+    types, deal, heading, malay = seo.LANDING[key]
+    filters = SearchFilters(property_types=types, deal_type=deal)
+    place = "Malaysia"
+    path = f"/{key}"
+    crumbs = [("Home", "/"), (heading, path)]
+    if place_slug is not None:
+        found = seo.place_from_slug(place_slug)
+        if not found:
+            raise HTTPException(404)
+        kind, place = found
+        if kind == "area":
+            filters.location = place
+            state = geo.AREAS[place][0]
+            crumbs.append((f"{heading} in {state}", f"/{key}/{seo.slugify(state)}"))
+        else:
+            filters.state = place
+        path = f"/{key}/{place_slug}"
+        crumbs.append((f"{heading} in {place}", path))
+
+    listings = db.search_listings(conn, filters)
+    log_events(conn, [l["ad_id"] for l in listings], "impression")
+    payload = results_payload(listings)
+
+    # Related pages: same search in other places, and other searches here (only ones with listings).
+    related_places, related_types = [], []
+    for text, href in footer_links():
+        if href.startswith(f"/{key}/") and href != path:
+            related_places.append((text, href))
+        elif place_slug and href.endswith(f"/{place_slug}") and not href.startswith(f"/{key}/"):
+            related_types.append((text, href))
+
+    n = len(listings)
+    title_place = place if place_slug else "Malaysia"
+    page = {
+        "title": f"{heading} in {title_place}" + (f" ({n} listing{'s' if n != 1 else ''})" if n else "")
+                 + f" | {config.SITE_NAME}",
+        "description": landing_intro(heading, title_place, malay, listings)[:300],
+        "canonical": seo.absolute(path),
+        "robots": "index, follow" if n else "noindex, follow",  # no thin empty pages in the index
+        "jsonld": [seo.breadcrumbs(crumbs), {
+            "@context": "https://schema.org", "@type": "ItemList",
+            "itemListElement": [{"@type": "ListItem", "position": i, "url": seo.absolute(seo.listing_path(l))}
+                                for i, l in enumerate(listings, 1)]}],
+    }
+    return render(request, "portal/home.html", listings=listings, form=form_from_filters(filters), filtered=True,
+                  markers=payload["markers"], page=page, crumbs=crumbs,
+                  heading=f"{heading} in {title_place}", intro=landing_intro(heading, title_place, malay, listings),
+                  related_places=related_places[:12], related_types=related_types[:8])
+
+
+@app.get("/{key}", response_class=HTMLResponse)
+def landing_country(key: str, request: Request, conn=Depends(db.get_conn)):
+    return _landing(request, conn, key, None)
+
+
+@app.get("/{key}/{place_slug}", response_class=HTMLResponse)
+def landing_place(key: str, place_slug: str, request: Request, conn=Depends(db.get_conn)):
+    return _landing(request, conn, key, place_slug)
