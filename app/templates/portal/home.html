@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block main_class %}portal{% endblock %}
+{% block content %}
+<section class="chat" aria-label="Search assistant">
+  <h1>Find a home by describing it</h1>
+  <p class="muted">Try “3-bedroom house with a pool” or “condo under 600k with parking”, then refine: “cheaper ones?”</p>
+  <div id="chat-log" class="chat-log" aria-live="polite"></div>
+  <form id="chat-form" class="chat-form">
+    <input id="chat-input" name="q" autocomplete="off" maxlength="1000" placeholder="What are you looking for?" required>
+    <button type="submit">Search</button>
+  </form>
+  <div id="chat-filters" class="filters"></div>
+  <button id="chat-reset" class="linklike" type="button" hidden>Start over</button>
+</section>
+<section class="results">
+  <h2 id="results-heading">Latest listings</h2>
+  <div id="results" class="grid">{% include "portal/_cards.html" %}</div>
+</section>
+{% endblock %}

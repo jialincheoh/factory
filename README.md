@@ -4,7 +4,7 @@ An AI system that writes several ad versions for each property listing, records 
 
 The goal is to learn from two signals at once: what real estate agents actually keep, and what actually brings in inquiries and sales. Prior research suggests people do not always choose the option they rate as best, so the system logs every draft, including the rejected ones.
 
-**Status:** database schema only. The services in the design below are not built yet.
+**Status:** working MVP website (agent-side ad creation and buyer-side chat search) on top of the schema. The job queue, reranker and training loop in the design below are not built yet.
 
 **Terminology:** in this project, *agent* always means a **human real estate agent**. The AI side is a language model called by a generation worker; nothing in this system is an autonomous AI agent.
 
@@ -48,18 +48,85 @@ Everything is written down here: every draft, including the rejected ones, what 
 4. **Train reranker, the learning step:** looks at which drafts real estate agents kept and which ads brought in inquiries and sales, and learns what a good draft looks like.
 5. **Deploy new version:** the improved judge is switched on in the fast loop, so future drafts get better.
 
+## The website (MVP)
+
+A FastAPI app with server-rendered pages, the Postgres schema above, and LangChain for the language-model calls (so the provider is one setting).
+
+**Real estate agent side (`/agent`)**
+
+1. The agent signs in, uploads 1 to 8 photos and writes two or three sentences in any language.
+2. One multimodal model call (`app/ai/llm.py`, `write_ads`) returns a structured result:
+   - the description's language and a faithful English version,
+   - **photo checks**: places where the photos contradict, cannot confirm, or add to the description,
+   - the **property card** (type, location, bedrooms, bathrooms, size, price, feature tags),
+   - three ad drafts in marketable English.
+3. The review page shows the checks, the editable card, and the drafts in seeded random order. The agent keeps one (and edits it), writes their own, or asks for new drafts.
+4. Publishing writes the decision (`kept`, `wrote_own` or `kept_none`), edit distance and time to decide, updates the card and puts the ad live.
+
+**Buyer side (`/`)**
+
+- A chat box takes plain-language queries ("3-bedroom house with a pool", then "cheaper ones?"). The model calls a `search_listings` tool with structured filters (`SearchFilters`); the app runs a parameterised SQL query and shows the results as cards. The model never writes SQL and cannot invent listings.
+- Listing pages hide the agent's phone number behind a button. Impressions, page opens and phone reveals go to `ad_events`, and the agent's dashboard shows the counts per listing.
+
+**Security measures**
+
+Argon2 password hashing with login throttling; signed, HttpOnly, SameSite session cookies, rotated on sign-in; CSRF tokens on every agent form; JSON-only or custom-header buyer endpoints; a strict Content-Security-Policy with no inline scripts; photos decoded and re-encoded on upload, which rejects non-images and strips EXIF (including GPS); unpublished photos served only to their owner; parameterised SQL throughout; agents can only see their own requests.
+
+**Out of scope for the MVP:** ad performance recommendations, the property management portal (payments), the job queue, the reranker.
+
+### Run the website locally
+
+```sh
+cp .env.example .env              # set POSTGRES_PASSWORD, SESSION_SECRET and a model key
+docker compose up -d              # Postgres with V1 and V2 applied
+python -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python -m scripts.seed_demo        # optional: 5 made-up listings + demo login
+.venv/bin/python -m scripts.create_agent --email you@example.com --name "Your Name" --phone "+00 0000 0000"
+.venv/bin/uvicorn app.main:app --reload      # http://localhost:8000
+```
+
+If your database volume was created before `V2__website.sql` existed, rebuild it: `docker compose down -v && docker compose up -d`.
+
+Run the app tests (they create and drop a separate `listing_ads_test` database and use the offline stand-in model, so no API key is needed):
+
+```sh
+.venv/bin/python -m pytest tests
+```
+
+### Learning map
+
+The code follows the concepts in the [Hugging Face Agents Course](https://huggingface.co/learn/agents-course/unit0/introduction), [LangChain docs](https://docs.langchain.com) and Chip Huyen's *AI Engineering*:
+
+| Concept | Where |
+|---|---|
+| Multimodal input (images + text) | `LLMAssistant.write_ads`, `_image_block` |
+| Structured output with a schema | `ListingAnalysis` in `app/ai/schemas.py`, `with_structured_output(..., method="json_schema")` |
+| Tool calling and a bounded tool loop | `LLMAssistant.search_chat`, `search_listings` tool |
+| Conversation memory | chat history sent with each turn, capped at 12 messages |
+| Grounding and guarding against hallucination | the model only sees tool results; SQL is built by the app |
+| Prompt injection defence | descriptions and photos marked as data in the prompt; tools are read-only |
+| Logging for evaluation | full prompt, raw response, display order and decisions stored per request |
+| Swappable providers | `LLM_MODEL=provider:model` via `init_chat_model` |
+
 ## Repository layout
 
 ```
+app/main.py                            web routes (buyer portal and agent pages)
+app/ai/                                schemas, LangChain calls, offline stand-in
+app/db.py, app/images.py, app/security.py
+app/templates/, app/static/            pages, CSS, small JavaScript
+scripts/                               create_agent, seed_demo
 db/migrations/V1__initial_schema.sql   schema (first migration)
+db/migrations/V2__website.sql          logins, property card, photos, analysis
 tests/test_schema.sql                  constraint tests, rolled back after running
+tests/test_app.py                      end-to-end website tests (pytest)
 docker-compose.yml                     local Postgres with the schema applied
 .env.example                           local settings template
 docs/overview.svg                      simple five-step loop
 docs/architecture.svg                  detailed system design
 ```
 
-## Run locally
+## Run the schema tests
 
 Requires Docker.
 

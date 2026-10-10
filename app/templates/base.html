@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Homefinder{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body class="{% block body_class %}{% endblock %}">
+<header class="topbar">
+  <a class="brand" href="/">Homefinder</a>
+  <nav>
+    <a href="/">Browse</a>
+    {% if agent_id %}
+      <a href="/agent">My listings</a>
+      <a class="button small" href="/agent/new">New listing</a>
+      <form method="post" action="/agent/logout" class="inline">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="linklike" type="submit">Sign out</button>
+      </form>
+    {% else %}
+      <a href="/agent/login">For agents</a>
+    {% endif %}
+  </nav>
+</header>
+{% if offline %}
+<div class="banner">Offline mode: no language model is configured, so photos are not checked and search uses simple keyword rules.</div>
+{% endif %}
+<main class="{% block main_class %}page{% endblock %}">
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

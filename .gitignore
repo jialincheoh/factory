@@ -17,3 +17,6 @@ pgdata/
 __pycache__/
 .venv/
 venv/
+
+# Uploaded listing photos
+uploads/

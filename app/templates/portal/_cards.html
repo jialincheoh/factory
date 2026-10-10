@@ -1,0 +1,18 @@
+{% for l in listings %}
+<a class="card" href="/listings/{{ l.listing_id }}">
+  {% if l.cover %}<img src="/uploads/{{ l.cover }}" alt="" loading="lazy">{% else %}<div class="noimg"></div>{% endif %}
+  <div class="card-body">
+    <div class="price">{{ l.price | money }}</div>
+    <h3>{{ l.title }}</h3>
+    <p class="facts">
+      {% if l.bedrooms == 0 %}Studio{% elif l.bedrooms is not none %}{{ l.bedrooms }} bd{% endif %}
+      {% if l.bathrooms is not none %} · {{ l.bathrooms }} ba{% endif %}
+      {% if l.size_sqft %} · {{ "{:,}".format(l.size_sqft) }} sqft{% endif %}
+      {% if l.location %} · {{ l.location }}{% endif %}
+    </p>
+    {% if l.features %}<ul class="tags">{% for f in l.features[:4] %}<li>{{ f }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+</a>
+{% else %}
+<p class="empty">No listings match yet.</p>
+{% endfor %}

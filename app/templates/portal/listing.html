@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ listing.title }} · Homefinder{% endblock %}
+{% block content %}
+<a class="back" href="/">← All listings</a>
+<article class="listing">
+  <div class="gallery">
+    {% for p in photos %}<img src="/uploads/{{ p.file_name }}" alt="Photo {{ loop.index }} of {{ listing.title }}">{% endfor %}
+  </div>
+  <div class="listing-main">
+    <div>
+      <p class="price big">{{ listing.price | money }}</p>
+      <h1>{{ listing.headline }}</h1>
+      <div class="ad-text">{% for para in listing.ad_text.split("\n") if para.strip() %}<p>{{ para }}</p>{% endfor %}</div>
+    </div>
+    <aside class="property-card">
+      <h2>Property card</h2>
+      <dl>
+        <dt>Type</dt><dd>{{ listing.property_type | capitalize }}</dd>
+        {% if listing.location %}<dt>Location</dt><dd>{{ listing.location }}</dd>{% endif %}
+        {% if listing.bedrooms is not none %}<dt>Bedrooms</dt><dd>{{ listing.bedrooms }}</dd>{% endif %}
+        {% if listing.bathrooms is not none %}<dt>Bathrooms</dt><dd>{{ listing.bathrooms }}</dd>{% endif %}
+        {% if listing.size_sqft %}<dt>Size</dt><dd>{{ "{:,}".format(listing.size_sqft) }} sqft</dd>{% endif %}
+      </dl>
+      {% if listing.features %}<ul class="tags">{% for f in listing.features %}<li>{{ f }}</li>{% endfor %}</ul>{% endif %}
+      <button class="button wide" id="reveal" data-listing="{{ listing.listing_id }}" type="button">Show phone number</button>
+      <p id="phone" class="phone" hidden></p>
+    </aside>
+  </div>
+</article>
+{% endblock %}

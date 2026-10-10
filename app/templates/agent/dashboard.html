@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}My listings · Homefinder{% endblock %}
+{% block content %}
+<div class="row-between">
+  <h1>{{ agent.display_name }}’s listings</h1>
+  <a class="button" href="/agent/new">New listing</a>
+</div>
+{% if listings %}
+<table class="table">
+  <thead><tr><th>Listing</th><th>Status</th><th>Price</th><th class="num">Shown</th><th class="num">Opened</th><th class="num">Phone reveals</th></tr></thead>
+  <tbody>
+  {% for l in listings %}
+    <tr>
+      <td>
+        {% if l.status == 'published' %}<a href="/listings/{{ l.listing_id }}">{{ l.title }}</a>
+        {% else %}<a href="/agent/requests/{{ l.latest_request }}">Untitled draft</a>{% endif %}
+      </td>
+      <td><span class="status {{ l.status }}">{{ l.status }}</span></td>
+      <td>{{ l.price | money if l.status == 'published' else '–' }}</td>
+      <td class="num">{{ l.impressions }}</td><td class="num">{{ l.clicks }}</td><td class="num">{{ l.phone_reveals }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted small">Shown = times the ad appeared in browse or search results. Opened = listing page views. Phone reveals = buyers who clicked “Show phone number”.</p>
+{% else %}
+<p class="empty">No listings yet. Upload photos and a short description to create your first ad.</p>
+{% endif %}
+{% endblock %}

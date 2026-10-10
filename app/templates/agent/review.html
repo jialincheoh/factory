@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Review drafts · Homefinder{% endblock %}
+{% block content %}
+{% set card = analysis.card or {} %}
+<h1>Review before publishing</h1>
+<div class="thumbs large">{% for p in photos %}<img src="/uploads/{{ p.file_name }}" alt="Photo {{ loop.index }}">{% endfor %}</div>
+
+{% if decision %}
+  <p class="notice">This request is closed ({{ decision.decision_type | replace('_', ' ') }}).
+  {% if req.listing_status == 'published' %}<a href="/listings/{{ req.listing_id }}">View the live ad</a>{% else %}<a href="/agent">Back to my listings</a>{% endif %}</p>
+{% else %}
+
+<section class="panel">
+  <h2>Photos vs. description</h2>
+  {% if analysis.mismatches %}
+    <ul class="checks">
+    {% for m in analysis.mismatches %}
+      <li class="{{ m.severity }}"><strong>{{ m.claim }}</strong><br>{{ m.finding }}</li>
+    {% endfor %}
+    </ul>
+  {% else %}
+    <p class="ok">No mismatches found between the photos and your description.</p>
+  {% endif %}
+  <details>
+    <summary>Your description ({{ analysis.detected_language or 'language not detected' }}) and its English version</summary>
+    <p class="quote">{{ req.description_original }}</p>
+    <p class="quote">{{ analysis.english_description }}</p>
+  </details>
+</section>
+
+<form method="post" action="/agent/requests/{{ req.request_id }}/publish" class="review">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <section class="panel">
+    <h2>Property card</h2>
+    <p class="muted small">Filled from your description and photos. Buyers search on these fields, so check them.</p>
+    <div class="card-grid">
+      <label class="span2">Title <input name="title" value="{{ card.title or '' }}" maxlength="120"></label>
+      <label>Type
+        <select name="property_type">{% for t in property_types %}<option value="{{ t }}" {% if t == card.property_type %}selected{% endif %}>{{ t | capitalize }}</option>{% endfor %}</select>
+      </label>
+      <label>Location <input name="location" value="{{ card.location or '' }}" maxlength="120"></label>
+      <label>Bedrooms <input name="bedrooms" inputmode="numeric" value="{{ card.bedrooms if card.bedrooms is not none else '' }}"></label>
+      <label>Bathrooms <input name="bathrooms" inputmode="numeric" value="{{ card.bathrooms if card.bathrooms is not none else '' }}"></label>
+      <label>Size (sqft) <input name="size_sqft" inputmode="numeric" value="{{ card.size_sqft or '' }}"></label>
+      <label>Price <input name="price" inputmode="decimal" value="{{ '%.0f' % card.price if card.price else '' }}"></label>
+      <label class="span2">Features (comma-separated) <input name="features" value="{{ (card.features or []) | join(', ') }}"></label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Pick an ad</h2>
+    <p class="muted small">Drafts appear in random order. Choose one and edit it freely, or write your own.</p>
+    {% for d in drafts %}
+    <label class="draft">
+      <input type="radio" name="choice" value="{{ d.candidate_id }}" required>
+      <span class="draft-body">
+        <span class="draft-label">Draft {{ d.display_position }}</span>
+        <input name="headline_{{ d.candidate_id }}" value="{{ d.headline }}" maxlength="120" aria-label="Headline">
+        <textarea name="body_{{ d.candidate_id }}" rows="5" aria-label="Ad text">{{ d.ad_text }}</textarea>
+      </span>
+    </label>
+    {% endfor %}
+    <label class="draft">
+      <input type="radio" name="choice" value="own">
+      <span class="draft-body">
+        <span class="draft-label">Write my own</span>
+        <input name="headline_own" placeholder="Headline" maxlength="120" aria-label="Headline">
+        <textarea name="body_own" rows="5" placeholder="Ad text" aria-label="Ad text"></textarea>
+      </span>
+    </label>
+  </section>
+  <div class="row-between">
+    <button class="button" type="submit">Publish ad</button>
+  </div>
+</form>
+<form method="post" action="/agent/requests/{{ req.request_id }}/regenerate" class="regen" id="regen-form">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <button class="linklike" type="submit">None of these work: generate new drafts</button>
+</form>
+{% endif %}
+{% endblock %}

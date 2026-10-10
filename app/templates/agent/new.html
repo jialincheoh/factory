@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}New listing · Homefinder{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>New listing</h1>
+  <p class="muted">Upload photos and write two or three sentences in any language. The assistant checks the photos against your description, writes the ad in English, and fills the property card. You review everything before it goes live.</p>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form method="post" action="/agent/new" enctype="multipart/form-data" class="stack" id="new-listing">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Photos (1 to {{ max_images }}, JPEG/PNG/WebP)
+      <input type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple required id="photo-input">
+    </label>
+    <div id="photo-preview" class="thumbs"></div>
+    <label>Description
+      <textarea name="description" rows="5" minlength="20" maxlength="1500" required
+        placeholder="e.g. Corner unit, 3 bedrooms 2 baths, 1,200 sqft in Riverside. Pool and gym, two parking bays. Asking 650k.">{{ description or '' }}</textarea>
+    </label>
+    <button class="button" type="submit" id="generate-btn">Generate ad drafts</button>
+    <p class="muted small" id="generate-wait" hidden>Reading your photos and writing drafts. This usually takes 10–30 seconds…</p>
+  </form>
+</div>
+{% endblock %}
