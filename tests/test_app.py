@@ -319,5 +319,23 @@ def test_privacy_notice():
     page = client.get("/privacy").text
     assert "Personal Data Protection Act 2010" in page and 'id="bm"' in page and "Akta Perlindungan Data Peribadi" in page
     assert "OpenStreetMap" in page and "which draft you keep" in page and "Google" in page
+    assert "We store each search: the words you typed" in page and "Kami menyimpan setiap carian" in page
+    assert "We do not store your search text" not in page and "after 8 hours" in page
     assert ("Before launch" in page) == (not (config.OPERATOR_NAME and config.PRIVACY_EMAIL))
     assert 'href="/privacy"' in client.get("/").text and 'href="/privacy"' in client.get("/agent/login").text
+
+
+
+def test_searches_are_logged_with_an_anonymous_visitor_id():
+    client = TestClient(app)
+    client.post("/api/search", json={"deal": "rent"})
+    client.post("/api/chat", json={"messages": [{"role": "user", "content": "freehold only please"}]})
+    with psycopg.connect(config.DATABASE_URL) as conn:
+        rows = conn.execute("SELECT visitor_id, method, query_text, filters, result_count, interpreter FROM search_events "
+                            "ORDER BY search_id DESC LIMIT 2").fetchall()
+        (vid_t, m_t, q_t, f_t, n_t, i_t), (vid_f, m_f, q_f, f_f, n_f, _) = rows
+        assert (m_f, q_f, f_f["deal_type"]) == ("filters", None, "rent") and n_f is not None
+        assert (m_t, q_t, i_t) == ("text", "freehold only please", "offline-rules") and f_t["tenure"] == "freehold"
+        assert vid_t == vid_f  # same visit, same anonymous ID
+        n = conn.execute("SELECT count(*) FROM ad_events WHERE visitor_id = %s", [vid_t]).fetchone()[0]
+    assert n >= 0

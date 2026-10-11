@@ -24,18 +24,20 @@
 <ul>
   <li>You do not need an account, and we do not ask for your name or contact details.</li>
   <li>We count how often each {% if self_signup %}ad{% else %}listing{% endif %} is shown, opened and has its phone number revealed. These counts are not linked to you.</li>
-  <li>What you type into the search box is sent to Google's Gemini AI service so it can be turned into search filters.{% if self_signup %} Your latest search is also kept briefly in your browser's session cookie so the results page can show it.{% endif %} We do not store your search text in our database.</li>
+  <li>What you type into the search box is sent to Google's Gemini AI service so it can be turned into search filters.</li>
+  {% if search_logging %}<li>We store each search: the words you typed, the filters it became, how many results it found and the time. We also record how you searched (typing, using the filters{% if self_signup %}, removing a filter{% endif %} or browsing a category). Please do not type personal details, such as your name or phone number, into the search box.</li>
+  <li>A random visitor ID is kept in your session cookie and stored with your searches and with the {% if self_signup %}ads{% else %}listings{% endif %} you open or whose phone number you reveal, so we can see which searches lead to enquiries. It is not linked to any account, name or contact details, and a new one is made when the cookie expires (after {{ cookie_lifetime }}).</li>{% else %}<li>We do not store your search text.</li>{% endif %}
 </ul>
 <h3>Technical data</h3>
 <ul>
-  <li>One cookie, needed for the site to work: it keeps you signed in and protects forms against misuse. We use no advertising or analytics cookies and no tracking scripts.</li>
+  <li>One cookie, needed for the site to work: it keeps you signed in, protects forms against misuse{% if search_logging %} and holds the random visitor ID described above{% endif %}. It expires after {{ cookie_lifetime }}. We use no advertising or third-party analytics cookies and no tracking scripts.</li>
   <li>Your IP address, held briefly in memory to limit repeated sign-in attempts{% if self_signup %} and excessive AI requests{% endif %}. It is not saved in our database. Our hosting provider's server logs record IP addresses, pages requested and times, for security and troubleshooting.</li>
 </ul>
 
 <h2>Why we use it</h2>
 <ul>
   <li>To run the site: publish {% if self_signup %}ads{% else %}listings{% endif %}, let buyers contact {% if self_signup %}sellers{% else %}agents{% endif %}, and keep accounts secure.</li>
-  <li>To write ad drafts and understand searches with AI.</li>
+  <li>To write ad drafts and understand searches with AI{% if search_logging %}, and to find searches that fail so we can improve them{% endif %}.</li>
   <li>To show {% if self_signup %}sellers{% else %}agents{% endif %} how their {% if self_signup %}ads{% else %}listings{% endif %} perform.</li>
   <li>To improve the service and for research: we may analyse usage data in anonymised, aggregated form, for example how often people search in their own words rather than with filters{% if ai_drafts %}, or which AI drafts agents keep{% endif %}. Research results never include names, email addresses, phone numbers or photos of identifiable people, and any research use follows approval by a research ethics board.</li>
 </ul>
@@ -85,18 +87,20 @@
 <ul>
   <li>Anda tidak perlu mendaftar akaun, dan kami tidak meminta nama atau butiran hubungan anda.</li>
   <li>Kami mengira berapa kali setiap {% if self_signup %}iklan{% else %}penyenaraian{% endif %} dipaparkan, dibuka dan nombor telefonnya dilihat. Kiraan ini tidak dikaitkan dengan anda.</li>
-  <li>Apa yang anda taip dalam kotak carian dihantar ke perkhidmatan AI Gemini milik Google untuk ditukar menjadi penapis carian.{% if self_signup %} Carian terakhir anda juga disimpan seketika dalam kuki sesi pelayar anda supaya halaman hasil boleh memaparkannya.{% endif %} Kami tidak menyimpan teks carian anda dalam pangkalan data kami.</li>
+  <li>Apa yang anda taip dalam kotak carian dihantar ke perkhidmatan AI Gemini milik Google untuk ditukar menjadi penapis carian.</li>
+  {% if search_logging %}<li>Kami menyimpan setiap carian: perkataan yang anda taip, penapis yang terhasil, bilangan hasil yang ditemui dan masanya. Kami juga merekodkan cara anda mencari (menaip, menggunakan penapis{% if self_signup %}, membuang penapis{% endif %} atau melayari kategori). Sila jangan taip butiran peribadi, seperti nama atau nombor telefon anda, dalam kotak carian.</li>
+  <li>ID pelawat rawak disimpan dalam kuki sesi anda dan direkodkan bersama carian anda serta {% if self_signup %}iklan{% else %}penyenaraian{% endif %} yang anda buka atau nombor telefonnya anda lihat, supaya kami dapat melihat carian mana yang membawa kepada pertanyaan. Ia tidak dikaitkan dengan mana-mana akaun, nama atau butiran hubungan, dan ID baharu dibuat apabila kuki tamat tempoh (selepas {{ cookie_lifetime_bm }}).</li>{% else %}<li>Kami tidak menyimpan teks carian anda.</li>{% endif %}
 </ul>
 <h3>Data teknikal</h3>
 <ul>
-  <li>Satu kuki yang diperlukan untuk laman ini berfungsi: ia mengekalkan log masuk anda dan melindungi borang daripada disalah guna. Kami tidak menggunakan kuki pengiklanan atau analitik, dan tiada skrip penjejakan.</li>
+  <li>Satu kuki yang diperlukan untuk laman ini berfungsi: ia mengekalkan log masuk anda, melindungi borang daripada disalah guna{% if search_logging %} dan menyimpan ID pelawat rawak yang diterangkan di atas{% endif %}. Ia tamat tempoh selepas {{ cookie_lifetime_bm }}. Kami tidak menggunakan kuki pengiklanan atau analitik pihak ketiga, dan tiada skrip penjejakan.</li>
   <li>Alamat IP anda, disimpan seketika dalam memori untuk mengehadkan cubaan log masuk berulang{% if self_signup %} dan permintaan AI yang berlebihan{% endif %}. Ia tidak disimpan dalam pangkalan data kami. Log pelayan penyedia hos kami merekodkan alamat IP, halaman yang diminta dan masa, untuk keselamatan dan penyelesaian masalah.</li>
 </ul>
 
 <h2>Tujuan kami menggunakannya</h2>
 <ul>
   <li>Untuk mengendalikan laman ini: menyiarkan {% if self_signup %}iklan{% else %}penyenaraian{% endif %}, membolehkan pembeli menghubungi {% if self_signup %}penjual{% else %}ejen{% endif %}, dan menjaga keselamatan akaun.</li>
-  <li>Untuk menulis draf iklan dan memahami carian menggunakan AI.</li>
+  <li>Untuk menulis draf iklan dan memahami carian menggunakan AI{% if search_logging %}, serta mengenal pasti carian yang gagal supaya kami dapat memperbaikinya{% endif %}.</li>
   <li>Untuk menunjukkan prestasi {% if self_signup %}iklan{% else %}penyenaraian{% endif %} kepada {% if self_signup %}penjual{% else %}ejen{% endif %}.</li>
   <li>Untuk menambah baik perkhidmatan dan untuk penyelidikan: kami mungkin menganalisis data penggunaan dalam bentuk tanpa nama dan agregat, contohnya berapa kerap orang mencari dengan ayat sendiri berbanding penapis{% if ai_drafts %}, atau draf AI yang dipilih oleh ejen{% endif %}. Hasil penyelidikan tidak akan mengandungi nama, alamat e-mel, nombor telefon atau gambar individu yang boleh dikenal pasti, dan sebarang penggunaan untuk penyelidikan mengikut kelulusan lembaga etika penyelidikan.</li>
 </ul>

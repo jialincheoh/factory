@@ -126,13 +126,33 @@ def render(request: Request, name: str, status_code: int = 200, **ctx):
     return templates.TemplateResponse(request, name, ctx, status_code=status_code)
 
 
-def log_events(conn, ad_ids, event_type: str) -> None:
+def visitor_id(request: Request) -> str:
+    """Random ID kept in the session cookie for one visitor; never linked to an account or contact details."""
+    vid = request.session.get("vid")
+    if not vid:
+        vid = request.session["vid"] = str(uuid.uuid4())
+    return vid
+
+
+def log_events(conn, ad_ids, event_type: str, vid: str | None = None) -> None:
     now = datetime.now(timezone.utc)
     with conn.cursor() as cur:
         cur.executemany(
-            "INSERT INTO ad_events (ad_id, event_type, occurred_at, source, source_event_id) "
-            "VALUES (%s, %s, %s, 'portal', %s)",
-            [(ad_id, event_type, now, uuid.uuid4().hex) for ad_id in ad_ids])
+            "INSERT INTO ad_events (ad_id, event_type, occurred_at, source, source_event_id, visitor_id) "
+            "VALUES (%s, %s, %s, 'portal', %s, %s)",
+            [(ad_id, event_type, now, uuid.uuid4().hex, vid) for ad_id in ad_ids])
+
+
+def log_search(conn, vid: str, method: str, filters: SearchFilters, result_count: int | None,
+               query: str | None = None, interpreter: str | None = None) -> None:
+    """One row per search: how it was made, what was typed, the filters it became, and the result count."""
+    if not config.SEARCH_LOGGING:
+        return
+    conn.execute(
+        "INSERT INTO search_events (visitor_id, method, query_text, filters, result_count, interpreter) "
+        "VALUES (%s, %s, %s, %s, %s, %s)",
+        [vid, method, query[:1000] if query else None, Jsonb(filters.model_dump(exclude_none=True, exclude_defaults=True)),
+         result_count, interpreter])
 
 
 # ---------------------------------------------------------------- buyer side
@@ -194,7 +214,10 @@ def results_payload(results: list[dict]) -> dict:
 def home(request: Request, conn=Depends(db.get_conn)):
     filters = filters_from_form(request.query_params)
     listings = db.search_listings(conn, filters)
-    log_events(conn, [l["ad_id"] for l in listings], "impression")
+    vid = visitor_id(request)
+    log_events(conn, [l["ad_id"] for l in listings], "impression", vid)
+    if request.query_params:
+        log_search(conn, vid, "filters", filters, len(listings))
     payload = results_payload(listings)
     filtered = bool(request.query_params)
     page = {
@@ -222,11 +245,13 @@ async def _json_body(request: Request) -> dict:
 @app.post("/api/search")
 async def search(request: Request):
     filters = filters_from_form(await _json_body(request))
+    vid = visitor_id(request)
 
     def run():
         with db.connect() as conn:
             results = db.search_listings(conn, filters)
-            log_events(conn, [r["ad_id"] for r in results], "impression")
+            log_events(conn, [r["ad_id"] for r in results], "impression", vid)
+            log_search(conn, vid, "filters", filters, len(results))
             return results
 
     return results_payload(await run_in_threadpool(run))
@@ -242,18 +267,27 @@ async def chat(request: Request):
     if not history or history[-1]["role"] != "user" or not history[-1]["content"].strip():
         raise HTTPException(400, "Send a message.")
     current = filters_from_form(body.get("filters") or {})
+    vid, typed = visitor_id(request), history[-1]["content"]
 
     def run():
         with db.connect() as conn:
-            reply, filters, results = get_assistant().search_chat(
+            assistant = get_assistant()
+            reply, filters, results = assistant.search_chat(
                 history, lambda f: db.search_listings(conn, f), current)
             if results is not None:
-                log_events(conn, [r["ad_id"] for r in results], "impression")
+                log_events(conn, [r["ad_id"] for r in results], "impression", vid)
+            log_search(conn, vid, "text", filters or current, len(results) if results is not None else None,
+                       typed, assistant.model_name)
             return reply, filters, results
 
     try:
         reply, filters, results = await run_in_threadpool(run)
     except Exception:
+        try:  # record the failed search too, so failure rates can be measured
+            with db.connect() as conn:
+                log_search(conn, vid, "text", current, None, typed, "error")
+        except Exception:
+            pass
         return JSONResponse({"reply": "Sorry, search is unavailable right now. Please try again."}, status_code=502)
 
     out = {"reply": reply}
@@ -285,7 +319,7 @@ def listing_page(listing_id: uuid.UUID, slug: str, request: Request, conn=Depend
         return RedirectResponse(path, status_code=301)
     photos = conn.execute("SELECT file_name, width, height FROM listing_images WHERE listing_id = %s ORDER BY position",
                           [listing_id]).fetchall()
-    log_events(conn, [listing["ad_id"]], "click")
+    log_events(conn, [listing["ad_id"]], "click", visitor_id(request))
 
     kind = type_label(listing["property_type"])
     deal = "for rent" if listing["deal_type"] == "rent" else "for sale"
@@ -332,7 +366,7 @@ def reveal_phone(listing_id: uuid.UUID, request: Request, conn=Depends(db.get_co
         "AND NOT EXISTS (SELECT 1 FROM outcomes o WHERE o.listing_id = l.listing_id)", [listing_id]).fetchone()
     if not row:
         raise HTTPException(404)
-    log_events(conn, [row["ad_id"]], "phone_reveal")
+    log_events(conn, [row["ad_id"]], "phone_reveal", visitor_id(request))
     conn.commit()
     return {"phone": row["phone"] or "Not provided", "name": row["display_name"]}
 
@@ -661,6 +695,7 @@ def favicon():
 @app.get("/privacy", response_class=HTMLResponse)
 def privacy(request: Request):
     return render(request, "privacy.html", operator=config.OPERATOR_NAME, privacy_email=config.PRIVACY_EMAIL,
+                  search_logging=config.SEARCH_LOGGING, cookie_lifetime="8 hours", cookie_lifetime_bm="8 jam",
                   self_signup=False, has_map=True, ai_drafts=True, page={
                       "title": f"Privacy notice · Notis privasi | {config.SITE_NAME}",
                       "description": f"What personal data {config.SITE_NAME} collects, why, and your rights under Malaysia's PDPA.",
@@ -766,7 +801,9 @@ def _landing(request: Request, conn, key: str, place_slug: str | None):
         crumbs.append((f"{heading} in {place}", path))
 
     listings = db.search_listings(conn, filters)
-    log_events(conn, [l["ad_id"] for l in listings], "impression")
+    vid = visitor_id(request)
+    log_events(conn, [l["ad_id"] for l in listings], "impression", vid)
+    log_search(conn, vid, "browse", filters, len(listings))
     payload = results_payload(listings)
 
     # Related pages: same search in other places, and other searches here (only ones with listings).

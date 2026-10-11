@@ -54,3 +54,6 @@ SITE_NAME = os.environ.get("SITE_NAME", "Factory")
 # Who runs the site and how to reach them, shown in the privacy notice (/privacy). Required before launch.
 OPERATOR_NAME = os.environ.get("OPERATOR_NAME", "")
 PRIVACY_EMAIL = os.environ.get("PRIVACY_EMAIL", "")
+
+# Record searches (typed text, filters, result counts) with an anonymous visitor ID. See /privacy.
+SEARCH_LOGGING = os.environ.get("SEARCH_LOGGING", "1") != "0"
