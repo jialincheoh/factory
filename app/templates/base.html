@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ page.title or (SITE_NAME ~ " · Factories, warehouses and land in Malaysia") }}</title>
+  <title>{{ page.title or (SITE_NAME ~ " · Factories and warehouses in Malaysia") }}</title>
   {% if page.description %}<meta name="description" content="{{ page.description }}">{% endif %}
   <meta name="robots" content="{{ page.robots or 'noindex, nofollow' }}">
   {% if page.canonical %}<link rel="canonical" href="{{ page.canonical }}">
@@ -32,9 +32,9 @@
   <a class="brand" href="/"><span class="wordmark">Factory Finder</span></a>
   <nav aria-label="Main">
     <a href="/factory-for-sale">Factories for sale</a>
-    <a href="/factory-for-rent">For rent</a>
-    <a href="/warehouse-for-rent">Warehouses</a>
-    <a href="/land-for-sale">Land</a>
+    <a href="/factory-for-rent">Factories for rent</a>
+    <a href="/warehouse-for-sale">Warehouses for sale</a>
+    <a href="/warehouse-for-rent">Warehouses for rent</a>
     {% if agent_id %}
       <a href="/agent">My listings</a>
       <a class="button small" href="/agent/new">New listing</a>
@@ -69,11 +69,8 @@
     <li><a href="/factory-for-rent">Factories for rent</a></li>
     <li><a href="/warehouse-for-sale">Warehouses for sale</a></li>
     <li><a href="/warehouse-for-rent">Warehouses for rent</a></li>
-    <li><a href="/industrial-land-for-sale">Industrial land for sale</a></li>
-    <li><a href="/commercial-land-for-sale">Commercial land</a></li>
-    <li><a href="/agricultural-land-for-sale">Agricultural land</a></li>
   </ul>
-  <p class="muted small">Kilang, gudang dan tanah industri untuk dijual dan disewa di seluruh Malaysia.</p>
+  <p class="muted small">Kilang dan gudang untuk dijual dan disewa di seluruh Malaysia.</p>
 </footer>
 </body>
 </html>

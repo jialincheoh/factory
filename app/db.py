@@ -6,7 +6,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from . import config
-from .ai.schemas import LANDED_TYPES, SearchFilters
+from .ai.schemas import SearchFilters
 
 
 @contextmanager
@@ -22,7 +22,7 @@ def get_conn():
 
 
 LISTING_CARD_SQL = """
-SELECT l.listing_id, l.title, l.property_type, l.deal_type, l.location, l.state, l.bedrooms, l.bathrooms,
+SELECT l.listing_id, l.title, l.property_type, l.deal_type, l.location, l.state,
        l.size_sqft, l.price_listed AS price, l.features, l.land_area_acres, l.ceiling_height_ft,
        l.power_amps, l.power_kva, l.power_amps_equiv, l.tenure, l.lease_years_left, l.zoning,
        l.container_access, l.loading_bays, l.latitude, l.longitude,
@@ -37,7 +37,7 @@ LEFT JOIN LATERAL (
   SELECT file_name, width, height FROM listing_images i
   WHERE i.listing_id = l.listing_id ORDER BY position LIMIT 1
 ) ci ON true
-WHERE l.status = 'published'
+WHERE l.status = 'published' AND l.property_type IN ('factory', 'warehouse')
   AND NOT EXISTS (SELECT 1 FROM outcomes o WHERE o.listing_id = l.listing_id)  -- sold, withdrawn or expired
 """
 
@@ -55,10 +55,7 @@ def search_listings(conn, f: SearchFilters, limit: int = 60) -> list[dict]:
     if f.deal_type:
         add("l.deal_type = %s", f.deal_type)
     if f.property_types:
-        types = set(f.property_types)
-        if "landed" in types:  # "a house" covers every landed type
-            types |= set(LANDED_TYPES)
-        add("l.property_type = ANY(%s)", sorted(types))
+        add("l.property_type = ANY(%s)", sorted(set(f.property_types)))
     if f.location:
         pat = f"%{_escape_like(f.location)}%"
         add("(l.location ILIKE %s OR l.state ILIKE %s)", pat, pat)
@@ -86,8 +83,6 @@ def search_listings(conn, f: SearchFilters, limit: int = 60) -> list[dict]:
         add("l.container_access")
     if f.min_loading_bays is not None:
         add("l.loading_bays >= %s", f.min_loading_bays)
-    if f.min_bedrooms is not None:
-        add("l.bedrooms >= %s", f.min_bedrooms)
     for feat in f.features:
         # A feature counts if it is tagged on the card or mentioned in the ad.
         pat = f"%{_escape_like(feat.lower().strip())}%"

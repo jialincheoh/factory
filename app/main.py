@@ -18,7 +18,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import config, db, geo, images, security, seo
 from .ai import get_assistant
 from .ai.llm import PROMPT_VERSION
-from .ai.schemas import LAND_TYPES, PROPERTY_TYPES, ZONINGS, SearchFilters
+from .ai.schemas import PROPERTY_TYPES, ZONINGS, SearchFilters
 
 EXPERIMENT_ARM = "random_order_v1"  # drafts shown in seeded random order
 
@@ -153,9 +153,7 @@ def filters_from_form(p) -> SearchFilters:
     if p.get("deal") in ("sale", "rent"):
         f.deal_type = p["deal"]
     t = p.get("type")
-    if t == "land":
-        f.property_types = list(LAND_TYPES)
-    elif t in PROPERTY_TYPES:
+    if t in PROPERTY_TYPES:
         f.property_types = [t]
     if (p.get("area") or "").strip():
         f.location = str(p["area"]).strip()[:80]
@@ -175,7 +173,7 @@ def filters_from_form(p) -> SearchFilters:
 def form_from_filters(f: SearchFilters) -> dict:
     """The reverse, so the filter bar shows what the chat searched for."""
     types = set(f.property_types)
-    t = "land" if types == set(LAND_TYPES) else (f.property_types[0] if len(types) == 1 else "")
+    t = f.property_types[0] if len(types) == 1 else ""
     out = {"deal": f.deal_type or "", "type": t, "area": f.location or "", "state": f.state or "",
            "max_price": f.max_price, "min_acres": f.min_land_acres, "min_power": f.min_power_amps,
            "min_ceiling": f.min_ceiling_ft, "tenure": f.tenure or "", "container": bool(f.container_access)}
@@ -200,9 +198,9 @@ def home(request: Request, conn=Depends(db.get_conn)):
     payload = results_payload(listings)
     filtered = bool(request.query_params)
     page = {
-        "title": f"Factories, Warehouses & Industrial Land for Sale and Rent in Malaysia | {config.SITE_NAME}",
-        "description": "Search factories, warehouses and industrial land across Malaysia by power supply, ceiling "
-                       "height, land size, tenure and container access. Kilang, gudang dan tanah industri.",
+        "title": f"Factories & Warehouses for Sale and Rent in Malaysia | {config.SITE_NAME}",
+        "description": "Search factories and warehouses across Malaysia by power supply, ceiling height, land size, "
+                       "tenure and container access. Kilang dan gudang untuk dijual dan disewa.",
         "canonical": seo.absolute("/"),
         # Filter combinations are endless; keep them out of the index but let crawlers follow the links.
         "robots": "noindex, follow" if filtered else "index, follow",
@@ -550,7 +548,10 @@ def _opt_float(value: str | None, field: str, lo: float = 0, hi: float = 1e12) -
 def card_from_form(form) -> dict:
     """Validated listing columns from the review form, keyed by column name."""
     text = lambda k, n=120: (str(form.get(k, "")).strip()[:n] or None)
-    property_type = form.get("property_type") if form.get("property_type") in PROPERTY_TYPES else "other"
+    property_type = form.get("property_type")
+    if property_type not in PROPERTY_TYPES:
+        raise HTTPException(400, "Factory Finder lists factories and warehouses only. "
+                                 "Shoplots and shop offices belong on shoplot.com.my.")
     tenure = form.get("tenure") if form.get("tenure") in ("freehold", "leasehold") else None
     lat, lng = _opt_float(form.get("latitude"), "Latitude", -90, 90), _opt_float(form.get("longitude"), "Longitude", -180, 180)
     if (lat is None) != (lng is None):
@@ -572,8 +573,6 @@ def card_from_form(form) -> dict:
         "zoning": form.get("zoning") if form.get("zoning") in ZONINGS else None,
         "container_access": {"yes": True, "no": False}.get(form.get("container_access")),
         "loading_bays": _opt_int(form.get("loading_bays"), "Loading bays"),
-        "bedrooms": _opt_int(form.get("bedrooms"), "Bedrooms"),
-        "bathrooms": _opt_int(form.get("bathrooms"), "Bathrooms"),
         "features": sorted({f.strip().lower()[:40] for f in str(form.get("features", "")).split(",") if f.strip()})[:30],
         "latitude": lat,
         "longitude": lng,

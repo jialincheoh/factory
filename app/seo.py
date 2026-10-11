@@ -5,7 +5,6 @@ import json
 import re
 
 from . import config, geo
-from .ai.schemas import LAND_TYPES
 
 # URL path -> (property types, deal type, plural heading, Malay phrase)
 LANDING = {
@@ -13,10 +12,6 @@ LANDING = {
     "factory-for-rent": (["factory"], "rent", "Factories for rent", "Kilang untuk disewa"),
     "warehouse-for-sale": (["warehouse"], "sale", "Warehouses for sale", "Gudang untuk dijual"),
     "warehouse-for-rent": (["warehouse"], "rent", "Warehouses for rent", "Gudang untuk disewa"),
-    "land-for-sale": (list(LAND_TYPES), "sale", "Land for sale", "Tanah untuk dijual"),
-    "industrial-land-for-sale": (["industrial_land"], "sale", "Industrial land for sale", "Tanah industri untuk dijual"),
-    "commercial-land-for-sale": (["commercial_land"], "sale", "Commercial land for sale", "Tanah komersial untuk dijual"),
-    "agricultural-land-for-sale": (["agricultural_land"], "sale", "Agricultural land for sale", "Tanah pertanian untuk dijual"),
 }
 
 
@@ -38,8 +33,6 @@ def landing_path(listing: dict) -> str | None:
     for path, (types, deal, *_rest) in LANDING.items():
         if types == [listing.get("property_type")] and deal == listing.get("deal_type"):
             return path
-    if listing.get("property_type") in LAND_TYPES and listing.get("deal_type") == "sale":
-        return "land-for-sale"
     return None
 
 

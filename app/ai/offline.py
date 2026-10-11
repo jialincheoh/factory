@@ -2,13 +2,13 @@
 
 It lets the site run and the tests pass without an API key. It does not look
 at photos or translate; the UI says so on every result it produces. It knows
-the common English and Malay terms for factories, warehouses and land.
+the common English and Malay terms for factories and warehouses.
 """
 import re
 from typing import Callable
 
 from .. import geo
-from .schemas import AMPS_PER_KVA, LAND_TYPES, AdDraft, ListingAnalysis, Mismatch, PropertyCard, SearchFilters
+from .schemas import AMPS_PER_KVA, AdDraft, ListingAnalysis, Mismatch, PropertyCard, SearchFilters
 
 FEATURES = {
     "overhead crane": ["overhead crane", "crane"],
@@ -26,13 +26,6 @@ FEATURES = {
 TYPES = [
     ("warehouse", ["warehouse", "gudang", "logistics hub"]),
     ("factory", ["factory", "factories", "kilang", "plant"]),
-    ("shop_office", ["shop office", "shoplot", "shop lot", "kedai pejabat"]),
-    ("agricultural_land", ["agricultural land", "agri land", "tanah pertanian", "plantation"]),
-    ("commercial_land", ["commercial land", "tanah komersial"]),
-    ("industrial_land", ["industrial land", "tanah industri"]),
-    ("condo", ["condo", "condominium"]),
-    ("bungalow", ["bungalow"]),
-    ("landed", ["house", "rumah"]),
 ]
 NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6}
 _NUM = r"(\d+(?:\.\d+)?|" + "|".join(NUMBER_WORDS) + r")"
@@ -61,8 +54,6 @@ def _types(text: str) -> list[str]:
     for tag, words in TYPES:
         if any(re.search(rf"\b{w}s?\b", text) for w in words):
             return [tag]
-    if re.search(r"\b(land|tanah)\b", text):
-        return list(LAND_TYPES)
     return []
 
 

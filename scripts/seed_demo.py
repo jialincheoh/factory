@@ -1,4 +1,4 @@
-"""Fill a local database with made-up industrial listings so the buyer side
+"""Fill a local database with made-up factory and warehouse listings so the buyer side
 has something to search. Never run against production.
 
     python -m scripts.seed_demo
@@ -30,18 +30,10 @@ DEMO = [
      "leasehold", 45, "medium_industrial", True, 8, 95_000, ["sprinkler", "loading dock", "near highway"],
      "80,000 sqft warehouse, 8 docks, 15 minutes from Westport",
      "Purpose-built logistics warehouse on 3.5 acres. 40 ft clear height, sprinkler system, eight dock levellers and a wide container yard. 1,000 kVA substation on site. Close to Westport and Northport for import and export operations."),
-    ("5-acre industrial land in Senai", "industrial_land", "sale", "Senai", 5.0, None, None, None, None,
-     "freehold", None, "heavy_industrial", True, None, 16_300_000, ["flat land", "near highway"],
-     "Flat 5-acre freehold heavy industrial land in Senai",
-     "Five acres of flat, freehold land zoned heavy industrial, close to Senai Airport and the North-South Expressway. Wide frontage for container trailers. Suitable for a build-to-suit plant or logistics hub."),
     ("Detached factory in Batu Kawan", "factory", "sale", "Batu Kawan", 3.0, 60000, None, 1500, 35,
      "leasehold", 55, "medium_industrial", True, 6, 38_000_000, ["office", "sprinkler", "guardhouse"],
      "Modern Batu Kawan factory with 1,500 kVA supply",
      "Three-acre site in Batu Kawan with a 60,000 sqft factory built for electronics and precision manufacturing. 1,500 kVA power, 35 ft ceiling, six loading bays and a two-storey office. Leasehold with 55 years remaining."),
-    ("10-acre agricultural land in Semenyih", "agricultural_land", "sale", "Semenyih", 10.0, None, None, None, None,
-     "freehold", None, "agricultural", None, None, 8_700_000, ["fenced"],
-     "10 acres of freehold agricultural land, Semenyih",
-     "Gently sloping freehold agricultural land with road access and a fenced boundary. Suited to farming, nursery or a long-term land bank near the Klang Valley."),
     ("Warehouse with high ceiling in Kulim", "warehouse", "sale", "Kulim", 2.5, 50000, 800, None, 38,
      "leasehold", 50, "light_industrial", True, 5, 24_000_000, ["office", "overhead crane"],
      "Kulim warehouse with overhead crane, 38 ft ceiling",
@@ -50,10 +42,6 @@ DEMO = [
      "freehold", None, "light_industrial", False, 1, 9_500, ["office"],
      "Affordable terrace factory in Puchong",
      "Two-storey terrace factory with a ground-floor workshop and first-floor office, 5,500 sqft in total. 100A supply and 18 ft ceiling. Lorry access; not suitable for 40-ft containers. Good for light assembly, storage or a showroom."),
-    ("4-acre commercial land in Nilai", "commercial_land", "sale", "Nilai", 4.0, None, None, None, None,
-     "freehold", None, "commercial", None, None, 13_900_000, ["near highway", "flat land"],
-     "Freehold commercial land beside Nilai interchange",
-     "Four acres of freehold commercial land with highway visibility near the Nilai interchange. Flat and ready for development of a showroom, retail or mixed commercial project."),
     ("Heavy industrial factory in Pasir Gudang", "factory", "sale", "Pasir Gudang", 4.0, 70000, None, 2000, 45,
      "leasehold", 40, "heavy_industrial", True, 6, 30_000_000, ["overhead crane", "office", "substation"],
      "Heavy industrial plant with 2,000 kVA and cranes",
@@ -122,22 +110,7 @@ def loading_bay(seed):
     return img
 
 
-def land(seed):
-    img, d = _canvas((190, 215, 235))
-    d.rectangle([0, 380, 1200, 800], fill=(110, 160, 80) if seed % 2 else (150, 170, 90))
-    d.polygon([(0, 380), (300, 300), (650, 360), (1000, 290), (1200, 340), (1200, 380)], fill=(80, 120, 80))
-    for x in range(0, 1200, 60):                                                      # fence
-        d.line([x, 600, x, 680], fill=(90, 80, 70), width=4)
-    d.line([0, 620, 1200, 620], fill=(90, 80, 70), width=3)
-    d.line([0, 650, 1200, 650], fill=(90, 80, 70), width=3)
-    d.rectangle([0, 720, 1200, 800], fill=(90, 90, 92))                               # road
-    _label(d)
-    return img
-
-
 def photos_for(kind: str, seed: int):
-    if kind.endswith("_land"):
-        return [land(seed), land(seed + 1)]
     return [exterior(seed), interior(seed), loading_bay(seed)]
 
 
@@ -196,7 +169,7 @@ def main():
             conn.execute("INSERT INTO published_ads (ad_id, listing_id, channel, published_at, headline, ad_text) "
                          "VALUES (%s,%s,'own_portal',now() - make_interval(hours => %s),%s,%s)",
                          [uuid.uuid4(), lid, i, headline, body])
-    print(f"Seeded {len(DEMO)} made-up industrial listings. Agent login: demo@example.com / demo-password-123")
+    print(f"Seeded {len(DEMO)} made-up factory and warehouse listings. Agent login: demo@example.com / demo-password-123")
 
 
 if __name__ == "__main__":

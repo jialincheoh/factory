@@ -13,7 +13,6 @@
       {% if l.size_sqft %}<li><b>{{ l.size_sqft | number }}</b> sqft built-up</li>{% endif %}
       {% if l.power_amps %}<li><b>{{ l.power_amps | number }}</b> A</li>{% elif l.power_kva %}<li><b>{{ l.power_kva | number }}</b> kVA</li>{% endif %}
       {% if l.ceiling_height_ft %}<li><b>{{ l.ceiling_height_ft | number(1) }}</b> ft ceiling</li>{% endif %}
-      {% if l.bedrooms is not none %}<li><b>{{ l.bedrooms }}</b> bed</li>{% endif %}
     </ul>
     <ul class="tags">
       {% if l.tenure %}<li>{{ l.tenure | capitalize }}</li>{% endif %}

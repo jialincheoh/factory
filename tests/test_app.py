@@ -253,7 +253,9 @@ def test_seo_pages(warehouses):
     assert client.get("/warehouse-for-rent/atlantis").status_code == 404
     assert client.get("/castles-for-sale").status_code == 404
     # Empty landing pages are kept out of the index.
-    assert 'content="noindex, follow"' in client.get("/agricultural-land-for-sale/perlis").text
+    assert 'content="noindex, follow"' in client.get("/warehouse-for-sale/perlis").text
+    # Factories and warehouses only: no land pages.
+    assert client.get("/land-for-sale").status_code == 404
 
     # Filtered views and agent pages are not indexed.
     assert 'content="noindex, follow"' in client.get("/?min_power=100").text
@@ -283,3 +285,30 @@ def test_ended_listings_are_gone_and_icons_served(agent):
     assert client.get("/listings/" + str(uuid.uuid4())).status_code == 404
     assert client.get("/favicon.ico").status_code == 200 and client.get("/static/icon.svg").status_code == 200
     assert '"@type": "Organization"' in client.get("/").text
+
+
+
+def test_only_factories_and_warehouses_are_listed(agent):
+    client = TestClient(app)
+    lid = uuid.uuid4()
+    with psycopg.connect(config.DATABASE_URL) as conn:  # e.g. an old shoplot row left in the database
+        conn.execute("INSERT INTO listings (listing_id, real_estate_agent_id, status, title, property_type, deal_type, "
+                     "location, state, price_listed) VALUES (%s,%s,'published','Old shop office','shop_office','rent',"
+                     "'Klang','Selangor',3000)", [lid, agent["id"]])
+        conn.execute("INSERT INTO published_ads (ad_id, listing_id, channel, published_at, headline, ad_text) "
+                     "VALUES (%s,%s,'own_portal',now(),'h','b')", [uuid.uuid4(), lid])
+    assert "Old shop office" not in client.get("/").text
+    assert client.get(f"/listings/{lid}/old-shop-office").status_code == 404
+
+    # An agent cannot publish anything else as a listing here.
+    token = sign_in(client, agent)
+    r = client.post("/agent/new", data={"description": "Shop office for rent in Klang, 1,500 sqft.", "csrf": token},
+                    files=[("photos", ("a.jpg", jpeg_with_gps(), "image/jpeg"))], follow_redirects=False)
+    review_url = r.headers["location"]
+    page = client.get(review_url).text
+    assert "doesn't look like a factory or warehouse" in page
+    cand_id = re.search(r'name="choice" value="([0-9a-f-]{36})"', page)[1]
+    r = client.post(review_url.replace("/agent/requests/", "/agent/requests/") + "/publish", data={
+        "csrf": token, "choice": cand_id, f"headline_{cand_id}": "h", f"body_{cand_id}": "b",
+        "property_type": "shop_office", "deal_type": "rent"})
+    assert r.status_code == 400 and "shoplot.com.my" in r.text

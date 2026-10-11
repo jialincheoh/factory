@@ -55,7 +55,6 @@
         {% if listing.zoning %}<dt>Zoning</dt><dd>{{ listing.zoning | type_label }}</dd>{% endif %}
         {% if listing.container_access is not none %}<dt>40-ft container access</dt><dd>{{ "Yes" if listing.container_access else "No" }}</dd>{% endif %}
         {% if listing.loading_bays is not none %}<dt>Loading bays</dt><dd>{{ listing.loading_bays }}</dd>{% endif %}
-        {% if listing.bedrooms is not none %}<dt>Bedrooms</dt><dd>{{ listing.bedrooms }}</dd>{% endif %}
       </dl>
       {% if listing.features %}<ul class="tags">{% for f in listing.features %}<li>{{ f }}</li>{% endfor %}</ul>{% endif %}
     </div>

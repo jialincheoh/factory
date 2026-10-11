@@ -58,7 +58,7 @@ A FastAPI app with server-rendered pages, the Postgres schema above, and LangCha
 2. One multimodal model call (`app/ai/llm.py`, `write_ads`) returns a structured result:
    - the description's language and a faithful English version,
    - **photo checks**: places where the photos contradict, cannot confirm, or add to the description,
-   - the **property card** (type, location, bedrooms, bathrooms, size, price, feature tags),
+   - the **property card** (factory or warehouse, location, land and built-up size, power, ceiling height, tenure, price, feature tags),
    - three ad drafts in marketable English.
 3. The review page shows the checks, the editable card, and the drafts in seeded random order. The agent keeps one (and edits it), writes their own, or asks for new drafts.
 4. Publishing writes the decision (`kept`, `wrote_own` or `kept_none`), edit distance and time to decide, updates the card and puts the ad live.
