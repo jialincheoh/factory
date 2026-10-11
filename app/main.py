@@ -551,7 +551,7 @@ def card_from_form(form) -> dict:
     property_type = form.get("property_type")
     if property_type not in PROPERTY_TYPES:
         raise HTTPException(400, "Factory Finder lists factories and warehouses only. "
-                                 "Shoplots and shop offices belong on shoplot.com.my.")
+                                 "Shoplots and shop offices belong on kedai.my.")
     tenure = form.get("tenure") if form.get("tenure") in ("freehold", "leasehold") else None
     lat, lng = _opt_float(form.get("latitude"), "Latitude", -90, 90), _opt_float(form.get("longitude"), "Longitude", -180, 180)
     if (lat is None) != (lng is None):

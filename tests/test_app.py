@@ -311,4 +311,4 @@ def test_only_factories_and_warehouses_are_listed(agent):
     r = client.post(review_url.replace("/agent/requests/", "/agent/requests/") + "/publish", data={
         "csrf": token, "choice": cand_id, f"headline_{cand_id}": "h", f"body_{cand_id}": "b",
         "property_type": "shop_office", "deal_type": "rent"})
-    assert r.status_code == 400 and "shoplot.com.my" in r.text
+    assert r.status_code == 400 and "kedai.my" in r.text
