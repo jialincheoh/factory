@@ -20,6 +20,9 @@
   {% for data in page.jsonld or [] %}<script type="application/ld+json">{{ seo_script(data) | safe }}</script>
   {% endfor %}
   <link rel="stylesheet" href="/static/style.css?v={{ static_version }}">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="apple-touch-icon" href="/static/icon-180.png">
   {% block head_extra %}{% endblock %}
   <script src="/static/app.js?v={{ static_version }}" defer></script>
 </head>

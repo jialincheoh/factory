@@ -114,4 +114,10 @@ def listing_jsonld(listing: dict, photos: list[str]) -> dict:
 
 
 def site_jsonld() -> dict:
-    return {"@context": "https://schema.org", "@type": "WebSite", "name": config.SITE_NAME, "url": absolute("/")}
+    return {"@context": "https://schema.org", "@type": "WebSite", "name": config.SITE_NAME, "url": absolute("/"),
+            "inLanguage": ["en-MY", "ms-MY"]}
+
+
+def organization_jsonld() -> dict:
+    return {"@context": "https://schema.org", "@type": "Organization", "name": config.SITE_NAME,
+            "url": absolute("/"), "logo": absolute("/static/icon-512.png")}

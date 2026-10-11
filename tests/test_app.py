@@ -263,3 +263,23 @@ def test_seo_pages(warehouses):
     assert f"/listings/{lid}/test-warehouse-kva</loc>" in sitemap and "/warehouse-for-rent/port-klang</loc>" in sitemap
     robots = client.get("/robots.txt").text
     assert "Disallow: /agent" in robots and "Sitemap: http://localhost:8000/sitemap.xml" in robots
+
+
+def test_ended_listings_are_gone_and_icons_served(agent):
+    client = TestClient(app)
+    lid = uuid.uuid4()
+    with psycopg.connect(config.DATABASE_URL) as conn:
+        conn.execute("INSERT INTO listings (listing_id, real_estate_agent_id, status, title, property_type, deal_type, "
+                     "location, state, price_listed) VALUES (%s,%s,'published','Sold factory','factory','sale',"
+                     "'Senai','Johor',900000)", [lid, agent["id"]])
+        conn.execute("INSERT INTO published_ads (ad_id, listing_id, channel, published_at, headline, ad_text) "
+                     "VALUES (%s,%s,'own_portal',now(),'h','b')", [uuid.uuid4(), lid])
+    assert client.get(f"/listings/{lid}/sold-factory").status_code == 200
+    with psycopg.connect(config.DATABASE_URL) as conn:
+        conn.execute("INSERT INTO outcomes (listing_id, status, ended_at, sold_price) VALUES (%s,'sold',now(),850000)", [lid])
+    r = client.get(f"/listings/{lid}/sold-factory")
+    assert r.status_code == 410 and "no longer available" in r.text
+    assert f"/listings/{lid}/" not in client.get("/sitemap.xml").text
+    assert client.get("/listings/" + str(uuid.uuid4())).status_code == 404
+    assert client.get("/favicon.ico").status_code == 200 and client.get("/static/icon.svg").status_code == 200
+    assert '"@type": "Organization"' in client.get("/").text

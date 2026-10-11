@@ -101,7 +101,8 @@ def footer_links() -> list[tuple[str, str]]:
     try:
         with db.connect() as conn:
             rows = conn.execute("SELECT property_type, deal_type, location, state, count(*) AS n FROM listings "
-                                "WHERE status = 'published' GROUP BY 1, 2, 3, 4 ORDER BY n DESC").fetchall()
+                                "WHERE status = 'published' AND listing_id NOT IN (SELECT listing_id FROM outcomes) "
+                                "GROUP BY 1, 2, 3, 4 ORDER BY n DESC").fetchall()
         seen = set()
         for r in rows:
             path = seo.landing_path(r)
@@ -205,7 +206,7 @@ def home(request: Request, conn=Depends(db.get_conn)):
         "canonical": seo.absolute("/"),
         # Filter combinations are endless; keep them out of the index but let crawlers follow the links.
         "robots": "noindex, follow" if filtered else "index, follow",
-        "jsonld": [seo.site_jsonld()],
+        "jsonld": [seo.site_jsonld(), seo.organization_jsonld()],
     }
     return render(request, "portal/home.html", listings=listings, form=form_from_filters(filters),
                   filtered=filtered, markers=payload["markers"], page=page)
@@ -266,7 +267,9 @@ async def chat(request: Request):
 def _published_listing(conn, listing_id):
     rows = conn.execute(db.LISTING_CARD_SQL + " AND l.listing_id = %s", [listing_id]).fetchall()
     if not rows:
-        raise HTTPException(404)
+        # Once public but now sold, withdrawn or expired: 410 Gone, so search engines drop it quickly.
+        ended = conn.execute("SELECT 1 FROM outcomes WHERE listing_id = %s", [listing_id]).fetchone()
+        raise HTTPException(410 if ended else 404)
     return rows[0]
 
 
@@ -327,7 +330,8 @@ def reveal_phone(listing_id: uuid.UUID, request: Request, conn=Depends(db.get_co
         "JOIN real_estate_agents a USING (real_estate_agent_id) "
         "JOIN LATERAL (SELECT ad_id FROM published_ads p WHERE p.listing_id = l.listing_id "
         "              ORDER BY published_at DESC LIMIT 1) pa ON true "
-        "WHERE l.listing_id = %s AND l.status = 'published'", [listing_id]).fetchone()
+        "WHERE l.listing_id = %s AND l.status = 'published' "
+        "AND NOT EXISTS (SELECT 1 FROM outcomes o WHERE o.listing_id = l.listing_id)", [listing_id]).fetchone()
     if not row:
         raise HTTPException(404)
     log_events(conn, [row["ad_id"]], "phone_reveal")
@@ -650,6 +654,11 @@ async def regenerate(request_id: uuid.UUID, request: Request, agent_id: str = De
 # ------------------------------------------------------------------ SEO
 # Registered last so these catch-all paths never shadow the routes above.
 
+@app.get("/favicon.ico")
+def favicon():
+    return FileResponse(config.ROOT / "app" / "static" / "icon-48.png", media_type="image/png")
+
+
 @app.get("/robots.txt", response_class=PlainTextResponse)
 def robots_txt():
     return (f"User-agent: *\nDisallow: /agent\nDisallow: /api/\n\nSitemap: {seo.absolute('/sitemap.xml')}\n")
@@ -666,7 +675,8 @@ def sitemap(conn=Depends(db.get_conn)):
         "greatest(l.updated_at, max(p.published_at)) AS modified, "
         "array_agg(DISTINCT i.file_name) FILTER (WHERE i.file_name IS NOT NULL) AS photos "
         "FROM listings l JOIN published_ads p USING (listing_id) LEFT JOIN listing_images i USING (listing_id) "
-        "WHERE l.status = 'published' GROUP BY l.listing_id").fetchall()
+        "WHERE l.status = 'published' AND NOT EXISTS (SELECT 1 FROM outcomes o WHERE o.listing_id = l.listing_id) "
+        "GROUP BY l.listing_id").fetchall()
     urls = [("/", None, [])]
     landings = {}
     for l in listings:
@@ -786,3 +796,17 @@ def landing_country(key: str, request: Request, conn=Depends(db.get_conn)):
 @app.get("/{key}/{place_slug}", response_class=HTMLResponse)
 def landing_place(key: str, place_slug: str, request: Request, conn=Depends(db.get_conn)):
     return _landing(request, conn, key, place_slug)
+
+
+@app.exception_handler(404)
+async def not_found(request: Request, exc):
+    if request.url.path.startswith("/api/"):
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
+    return render(request, "portal/message.html", 404, heading="Page not found",
+                  text="This listing may have been taken down, or the link is mistyped.")
+
+
+@app.exception_handler(410)
+async def gone(request: Request, exc):
+    return render(request, "portal/message.html", 410, heading="This property is no longer available",
+                  text="It has been sold, rented out or withdrawn. Similar properties may still be listed.")

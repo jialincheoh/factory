@@ -38,6 +38,7 @@ LEFT JOIN LATERAL (
   WHERE i.listing_id = l.listing_id ORDER BY position LIMIT 1
 ) ci ON true
 WHERE l.status = 'published'
+  AND NOT EXISTS (SELECT 1 FROM outcomes o WHERE o.listing_id = l.listing_id)  -- sold, withdrawn or expired
 """
 
 
