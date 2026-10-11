@@ -49,4 +49,4 @@ CURRENCY_CODE = os.environ.get("CURRENCY_CODE", "MYR")  # ISO 4217, for structur
 # Public address of the site, used in canonical links, the sitemap and
 # structured data. Set it to the real domain (e.g. https://factory.my) when deploying.
 SITE_URL = os.environ.get("SITE_URL", "http://localhost:8000").rstrip("/")
-SITE_NAME = os.environ.get("SITE_NAME", "Factory Finder")
+SITE_NAME = os.environ.get("SITE_NAME", "Factory")
