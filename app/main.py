@@ -658,6 +658,15 @@ def favicon():
     return FileResponse(config.ROOT / "app" / "static" / "icon-48.png", media_type="image/png")
 
 
+@app.get("/privacy", response_class=HTMLResponse)
+def privacy(request: Request):
+    return render(request, "privacy.html", operator=config.OPERATOR_NAME, privacy_email=config.PRIVACY_EMAIL,
+                  self_signup=False, has_map=True, ai_drafts=True, page={
+                      "title": f"Privacy notice · Notis privasi | {config.SITE_NAME}",
+                      "description": f"What personal data {config.SITE_NAME} collects, why, and your rights under Malaysia's PDPA.",
+                      "canonical": seo.absolute('/privacy'), "robots": "index, follow"})
+
+
 @app.get("/robots.txt", response_class=PlainTextResponse)
 def robots_txt():
     return (f"User-agent: *\nDisallow: /agent\nDisallow: /api/\n\nSitemap: {seo.absolute('/sitemap.xml')}\n")

@@ -247,3 +247,11 @@ details summary { cursor: pointer; color: var(--muted); }
   .results-map { height: 280px; }
   .table { display: block; overflow-x: auto; }
 }
+
+/* privacy notice */
+.legal { max-width: 760px; margin: 0 auto 3rem; line-height: 1.6; }
+.legal h2 { margin-top: 1.8rem; }
+.legal h3 { margin-top: 1.2rem; font-size: 1rem; }
+.legal ul { padding-left: 1.2rem; }
+.legal li { margin: .35rem 0; }
+.legal hr { margin: 3rem 0; border: 0; border-top: 1px solid var(--line); }

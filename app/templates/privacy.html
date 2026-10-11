@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block content %}
+<article class="legal">
+<h1>Privacy notice · Notis privasi</h1>
+<p class="muted small">Last updated 11 October 2026 · Dikemas kini 11 Oktober 2026 · <a href="#bm">Baca dalam Bahasa Malaysia</a></p>
+{% if not operator or not privacy_email %}
+<p class="notice">Before launch: set <code>OPERATOR_NAME</code> and <code>PRIVACY_EMAIL</code> in the site settings. This notice must name who runs the site and how to contact them.</p>
+{% endif %}
+
+<p>This notice explains what personal data {{ SITE_NAME }} collects, why, who it is shared with and what you can do about it, as required by Malaysia's Personal Data Protection Act 2010 (PDPA).</p>
+
+<h2>Who we are</h2>
+<p>{{ SITE_NAME }} is run by {{ operator or "[operator name]" }}. For any question or request about your personal data, email <a href="mailto:{{ privacy_email }}">{{ privacy_email or "[contact email]" }}</a>.</p>
+
+<h2>What we collect</h2>
+<h3>{% if self_signup %}If you sell on {{ SITE_NAME }}{% else %}If you are a real estate agent listing on {{ SITE_NAME }}{% endif %}</h3>
+<ul>
+  <li>Your name, email address and phone number, and your password, which we store only in scrambled (hashed) form.</li>
+  <li>What you post: your description, the photos you upload and the details of the {% if self_signup %}item{% else %}property{% endif %}. We remove location data (GPS) and other hidden information from photos when you upload them.</li>
+  {% if ai_drafts %}<li>The ad drafts our AI writes for you, which draft you keep, the changes you make to it and how long you take to decide.</li>{% endif %}
+  <li>Counts of how often your {% if self_signup %}ads{% else %}listings{% endif %} are viewed and how often buyers ask for your phone number.</li>
+</ul>
+<h3>If you are browsing or searching</h3>
+<ul>
+  <li>You do not need an account, and we do not ask for your name or contact details.</li>
+  <li>We count how often each {% if self_signup %}ad{% else %}listing{% endif %} is shown, opened and has its phone number revealed. These counts are not linked to you.</li>
+  <li>What you type into the search box is sent to Google's Gemini AI service so it can be turned into search filters.{% if self_signup %} Your latest search is also kept briefly in your browser's session cookie so the results page can show it.{% endif %} We do not store your search text in our database.</li>
+</ul>
+<h3>Technical data</h3>
+<ul>
+  <li>One cookie, needed for the site to work: it keeps you signed in and protects forms against misuse. We use no advertising or analytics cookies and no tracking scripts.</li>
+  <li>Your IP address, held briefly in memory to limit repeated sign-in attempts{% if self_signup %} and excessive AI requests{% endif %}. It is not saved in our database. Our hosting provider's server logs record IP addresses, pages requested and times, for security and troubleshooting.</li>
+</ul>
+
+<h2>Why we use it</h2>
+<ul>
+  <li>To run the site: publish {% if self_signup %}ads{% else %}listings{% endif %}, let buyers contact {% if self_signup %}sellers{% else %}agents{% endif %}, and keep accounts secure.</li>
+  <li>To write ad drafts and understand searches with AI.</li>
+  <li>To show {% if self_signup %}sellers{% else %}agents{% endif %} how their {% if self_signup %}ads{% else %}listings{% endif %} perform.</li>
+  <li>To improve the service and for research: we may analyse usage data in anonymised, aggregated form, for example how often people search in their own words rather than with filters{% if ai_drafts %}, or which AI drafts agents keep{% endif %}. Research results never include names, email addresses, phone numbers or photos of identifiable people, and any research use follows approval by a research ethics board.</li>
+</ul>
+
+<h2>Who we share it with</h2>
+<ul>
+  <li><strong>Buyers</strong> see the {% if self_signup %}seller's{% else %}agent's{% endif %} name, and the phone number when they ask for it on a {% if self_signup %}ad{% else %}listing{% endif %} page.</li>
+  <li><strong>Google</strong> (Gemini AI) processes {% if self_signup %}sellers'{% else %}agents'{% endif %} descriptions and photos, and the text of searches, to provide the AI features. Google's servers may be outside Malaysia.</li>
+  {% if has_map %}<li><strong>OpenStreetMap</strong> provides the maps. Your browser loads map images directly from OpenStreetMap's servers, which therefore see your IP address.</li>{% endif %}
+  <li>Our <strong>hosting provider</strong>, which stores the site and its data, possibly outside Malaysia.</li>
+  <li>Authorities, when the law requires it.</li>
+</ul>
+<p>We do not sell personal data, and we do not share it with advertisers.</p>
+
+<h2>Is it required?</h2>
+<p>{% if self_signup %}Sellers{% else %}Agents{% endif %} must give their name, email address and phone number to post, because buyers need a way to make contact. Without them you cannot post. Buyers do not need to give us anything.</p>
+
+<h2>How long we keep it</h2>
+<p>We keep account data while your account is open, and {% if self_signup %}ads{% else %}listings{% endif %} while they are published or needed for your records. We delete or anonymise data when it is no longer needed. You can ask us to close your account and delete your data at any time.</p>
+
+<h2>Your rights</h2>
+<p>You can ask to see the personal data we hold about you, have it corrected, withdraw consent, limit how we use it, or have it deleted. Email {{ privacy_email or "[contact email]" }}. We reply to access requests within 21 days. If you are not satisfied, you can complain to Malaysia's Personal Data Protection Commissioner (Jabatan Perlindungan Data Peribadi).</p>
+
+<h2>How we protect it</h2>
+<p>Passwords are stored hashed, the site uses encrypted connections (HTTPS), and access to the database is restricted.</p>
+
+<h2>Changes</h2>
+<p>If we change this notice, we will update it here and change the date at the top.</p>
+
+<hr>
+
+<h1 id="bm">Notis privasi</h1>
+<p>Notis ini menerangkan data peribadi yang dikumpul oleh {{ SITE_NAME }}, sebabnya, dengan siapa ia dikongsi dan hak anda, seperti yang dikehendaki oleh Akta Perlindungan Data Peribadi 2010 (PDPA).</p>
+
+<h2>Siapa kami</h2>
+<p>{{ SITE_NAME }} dikendalikan oleh {{ operator or "[nama pengendali]" }}. Untuk sebarang pertanyaan atau permintaan tentang data peribadi anda, e-mel <a href="mailto:{{ privacy_email }}">{{ privacy_email or "[e-mel hubungan]" }}</a>.</p>
+
+<h2>Data yang kami kumpul</h2>
+<h3>{% if self_signup %}Jika anda menjual di {{ SITE_NAME }}{% else %}Jika anda ejen hartanah yang menyenaraikan di {{ SITE_NAME }}{% endif %}</h3>
+<ul>
+  <li>Nama, alamat e-mel dan nombor telefon anda, serta kata laluan anda, yang hanya disimpan dalam bentuk hash yang tidak boleh dibaca semula.</li>
+  <li>Apa yang anda siarkan: penerangan, gambar yang dimuat naik dan butiran {% if self_signup %}barang{% else %}hartanah{% endif %}. Kami membuang data lokasi (GPS) dan maklumat tersembunyi lain daripada gambar semasa dimuat naik.</li>
+  {% if ai_drafts %}<li>Draf iklan yang ditulis oleh AI kami, draf yang anda pilih, perubahan yang anda buat dan berapa lama anda mengambil masa untuk membuat keputusan.</li>{% endif %}
+  <li>Bilangan kali {% if self_signup %}iklan{% else %}penyenaraian{% endif %} anda dilihat dan bilangan kali pembeli meminta nombor telefon anda.</li>
+</ul>
+<h3>Jika anda melayari atau mencari</h3>
+<ul>
+  <li>Anda tidak perlu mendaftar akaun, dan kami tidak meminta nama atau butiran hubungan anda.</li>
+  <li>Kami mengira berapa kali setiap {% if self_signup %}iklan{% else %}penyenaraian{% endif %} dipaparkan, dibuka dan nombor telefonnya dilihat. Kiraan ini tidak dikaitkan dengan anda.</li>
+  <li>Apa yang anda taip dalam kotak carian dihantar ke perkhidmatan AI Gemini milik Google untuk ditukar menjadi penapis carian.{% if self_signup %} Carian terakhir anda juga disimpan seketika dalam kuki sesi pelayar anda supaya halaman hasil boleh memaparkannya.{% endif %} Kami tidak menyimpan teks carian anda dalam pangkalan data kami.</li>
+</ul>
+<h3>Data teknikal</h3>
+<ul>
+  <li>Satu kuki yang diperlukan untuk laman ini berfungsi: ia mengekalkan log masuk anda dan melindungi borang daripada disalah guna. Kami tidak menggunakan kuki pengiklanan atau analitik, dan tiada skrip penjejakan.</li>
+  <li>Alamat IP anda, disimpan seketika dalam memori untuk mengehadkan cubaan log masuk berulang{% if self_signup %} dan permintaan AI yang berlebihan{% endif %}. Ia tidak disimpan dalam pangkalan data kami. Log pelayan penyedia hos kami merekodkan alamat IP, halaman yang diminta dan masa, untuk keselamatan dan penyelesaian masalah.</li>
+</ul>
+
+<h2>Tujuan kami menggunakannya</h2>
+<ul>
+  <li>Untuk mengendalikan laman ini: menyiarkan {% if self_signup %}iklan{% else %}penyenaraian{% endif %}, membolehkan pembeli menghubungi {% if self_signup %}penjual{% else %}ejen{% endif %}, dan menjaga keselamatan akaun.</li>
+  <li>Untuk menulis draf iklan dan memahami carian menggunakan AI.</li>
+  <li>Untuk menunjukkan prestasi {% if self_signup %}iklan{% else %}penyenaraian{% endif %} kepada {% if self_signup %}penjual{% else %}ejen{% endif %}.</li>
+  <li>Untuk menambah baik perkhidmatan dan untuk penyelidikan: kami mungkin menganalisis data penggunaan dalam bentuk tanpa nama dan agregat, contohnya berapa kerap orang mencari dengan ayat sendiri berbanding penapis{% if ai_drafts %}, atau draf AI yang dipilih oleh ejen{% endif %}. Hasil penyelidikan tidak akan mengandungi nama, alamat e-mel, nombor telefon atau gambar individu yang boleh dikenal pasti, dan sebarang penggunaan untuk penyelidikan mengikut kelulusan lembaga etika penyelidikan.</li>
+</ul>
+
+<h2>Dengan siapa kami berkongsi</h2>
+<ul>
+  <li><strong>Pembeli</strong> melihat nama {% if self_signup %}penjual{% else %}ejen{% endif %}, dan nombor telefon apabila mereka memintanya di halaman {% if self_signup %}iklan{% else %}penyenaraian{% endif %}.</li>
+  <li><strong>Google</strong> (AI Gemini) memproses penerangan dan gambar {% if self_signup %}penjual{% else %}ejen{% endif %}, serta teks carian, untuk menyediakan ciri AI. Pelayan Google mungkin berada di luar Malaysia.</li>
+  {% if has_map %}<li><strong>OpenStreetMap</strong> menyediakan peta. Pelayar anda memuatkan imej peta terus daripada pelayan OpenStreetMap, yang dengan itu dapat melihat alamat IP anda.</li>{% endif %}
+  <li><strong>Penyedia hos</strong> kami, yang menyimpan laman dan datanya, mungkin di luar Malaysia.</li>
+  <li>Pihak berkuasa, apabila dikehendaki oleh undang-undang.</li>
+</ul>
+<p>Kami tidak menjual data peribadi dan tidak berkongsinya dengan pengiklan.</p>
+
+<h2>Adakah ia wajib?</h2>
+<p>{% if self_signup %}Penjual{% else %}Ejen{% endif %} mesti memberikan nama, alamat e-mel dan nombor telefon untuk menyiarkan, kerana pembeli perlu cara untuk menghubungi. Tanpanya anda tidak boleh menyiarkan. Pembeli tidak perlu memberikan apa-apa kepada kami.</p>
+
+<h2>Tempoh penyimpanan</h2>
+<p>Kami menyimpan data akaun selagi akaun anda dibuka, dan {% if self_signup %}iklan{% else %}penyenaraian{% endif %} selagi ia disiarkan atau diperlukan untuk rekod anda. Kami memadam atau menjadikan data tanpa nama apabila ia tidak lagi diperlukan. Anda boleh meminta kami menutup akaun dan memadam data anda pada bila-bila masa.</p>
+
+<h2>Hak anda</h2>
+<p>Anda boleh meminta untuk melihat data peribadi anda yang kami simpan, membetulkannya, menarik balik persetujuan, mengehadkan penggunaannya, atau memadamnya. E-mel {{ privacy_email or "[e-mel hubungan]" }}. Kami membalas permintaan akses dalam tempoh 21 hari. Jika tidak berpuas hati, anda boleh membuat aduan kepada Pesuruhjaya Perlindungan Data Peribadi Malaysia (Jabatan Perlindungan Data Peribadi).</p>
+
+<h2>Cara kami melindunginya</h2>
+<p>Kata laluan disimpan dalam bentuk hash, laman ini menggunakan sambungan yang disulitkan (HTTPS), dan akses kepada pangkalan data adalah terhad.</p>
+
+<h2>Perubahan</h2>
+<p>Jika kami mengubah notis ini, kami akan mengemas kininya di sini dan menukar tarikh di bahagian atas.</p>
+</article>
+{% endblock %}

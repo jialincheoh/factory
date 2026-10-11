@@ -50,3 +50,7 @@ CURRENCY_CODE = os.environ.get("CURRENCY_CODE", "MYR")  # ISO 4217, for structur
 # structured data. Set it to the real domain (e.g. https://factory.my) when deploying.
 SITE_URL = os.environ.get("SITE_URL", "http://localhost:8000").rstrip("/")
 SITE_NAME = os.environ.get("SITE_NAME", "Factory")
+
+# Who runs the site and how to reach them, shown in the privacy notice (/privacy). Required before launch.
+OPERATOR_NAME = os.environ.get("OPERATOR_NAME", "")
+PRIVACY_EMAIL = os.environ.get("PRIVACY_EMAIL", "")
