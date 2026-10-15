@@ -9,4 +9,8 @@ def get_assistant():
         from .offline import OfflineAssistant
         return OfflineAssistant(config.CURRENCY)
     from .llm import LLMAssistant
-    return LLMAssistant(config.LLM_MODEL, config.CURRENCY)
+    tracer = None
+    if config.TRACE_TO_LANGSMITH:
+        from .tracing import make_tracer
+        tracer = make_tracer(config.LANGSMITH_PROJECT)
+    return LLMAssistant(config.LLM_MODEL, config.CURRENCY, config.LLM_FALLBACK_MODEL, tracer)

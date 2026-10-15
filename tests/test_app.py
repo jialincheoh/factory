@@ -204,6 +204,33 @@ def test_bad_filter_values_are_ignored():
     assert TestClient(app).get("/?min_power=abc&state=Atlantis&type=castle").status_code == 200
 
 
+def test_creativity_ranking(agent):
+    client = TestClient(app)
+    token = sign_in(client, agent)
+    r = client.post("/agent/new", data={"description": "Factory for sale in Senai, 1 acre, 200A power.", "csrf": token},
+                    files=[("photos", ("a.jpg", jpeg_with_gps(), "image/jpeg"))], follow_redirects=False)
+    request_id = r.headers["location"].rsplit("/", 1)[1]
+    page = client.get(r.headers["location"]).text
+    ids = re.findall(r'name="rank_([0-9a-f-]{36})"', page)
+    assert len(ids) == config.DRAFTS_PER_REQUEST
+    form = {"csrf": token, "choice": ids[0], f"headline_{ids[0]}": "Factory in Senai",
+            f"body_{ids[0]}": "One acre, 200A.", "property_type": "factory", "deal_type": "sale"}
+    url = f"/agent/requests/{request_id}/publish"
+
+    # Partial or tied rankings are refused and nothing is saved.
+    assert client.post(url, data={**form, f"rank_{ids[0]}": "1"}).status_code == 400
+    assert client.post(url, data={**form, **{f"rank_{c}": "1" for c in ids}}).status_code == 400
+    assert db_one("SELECT count(*) FROM decisions WHERE request_id = %s", [request_id])[0] == 0
+
+    # A full ranking is stored with the decision.
+    ranks = {f"rank_{c}": str(len(ids) - i) for i, c in enumerate(ids)}
+    assert client.post(url, data={**form, **ranks}, follow_redirects=False).status_code == 303
+    with psycopg.connect(config.DATABASE_URL) as conn:
+        stored = dict(conn.execute("SELECT candidate_id::text, rank FROM rankings WHERE request_id = %s",
+                                   [request_id]).fetchall())
+    assert stored == {c: len(ids) - i for i, c in enumerate(ids)}
+
+
 def test_regenerate_logs_kept_none(agent):
     client = TestClient(app)
     token = sign_in(client, agent)

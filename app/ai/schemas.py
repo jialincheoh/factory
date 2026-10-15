@@ -3,6 +3,7 @@
 LangChain turns these Pydantic models into the provider's structured-output
 or tool schema, so the field descriptions double as instructions.
 """
+from dataclasses import dataclass, field
 from typing import Literal, Optional, get_args
 
 from pydantic import BaseModel, Field
@@ -67,6 +68,36 @@ class ListingAnalysis(BaseModel):
     card: PropertyCard
     mismatches: list[Mismatch] = Field(default_factory=list)
     drafts: list[AdDraft] = Field(description="Distinct ad drafts that differ in angle and tone")
+
+
+class DraftVerdict(BaseModel):
+    draft: int = Field(description="Draft number, starting at 1")
+    unsupported_claims: list[str] = Field(
+        default_factory=list,
+        description="Each factual claim in this draft that the facts do not support, quoted or closely "
+                    "paraphrased; empty if the draft is fully supported")
+
+
+class DraftCheck(BaseModel):
+    """The checker's verdict on every draft."""
+    verdicts: list[DraftVerdict]
+
+
+class FixedDraft(AdDraft):
+    draft: int = Field(description="Number of the draft being fixed")
+
+
+class FixedDrafts(BaseModel):
+    drafts: list[FixedDraft]
+
+
+@dataclass
+class AdResult:
+    """What write_ads hands back to the web app (not a model output)."""
+    analysis: ListingAnalysis
+    prompt_text: str
+    model_name: str                 # model(s) that actually answered, joined with "+"
+    checks: list[dict] = field(default_factory=list)  # per draft, in the order of analysis.drafts
 
 
 class SearchFilters(BaseModel):

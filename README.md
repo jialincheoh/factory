@@ -60,8 +60,11 @@ A FastAPI app with server-rendered pages, the Postgres schema above, and LangCha
    - **photo checks**: places where the photos contradict, cannot confirm, or add to the description,
    - the **property card** (factory or warehouse, location, land and built-up size, power, ceiling height, tenure, price, feature tags),
    - three ad drafts in marketable English.
-3. The review page shows the checks, the editable card, and the drafts in seeded random order. The agent keeps one (and edits it), writes their own, or asks for new drafts.
-4. Publishing writes the decision (`kept`, `wrote_own` or `kept_none`), edit distance and time to decide, updates the card and puts the ad live.
+3. A **draft check** (a LangGraph graph, `app/ai/draft_graph.py`) compares every draft with the card, the description and the photo warnings. Drafts with unsupported claims are rewritten once and checked again; any that still fail are shown with a warning. Earlier versions and the claims found are stored with each draft (`candidates.raw_response.check`).
+4. The review page shows the checks, the editable card, and the drafts in seeded random order. The agent keeps one (and edits it), writes their own, or asks for new drafts, and can optionally rank the drafts from most to least creative (`rankings`).
+5. Publishing writes the decision (`kept`, `wrote_own` or `kept_none`), edit distance and time to decide, updates the card and puts the ad live.
+
+If `LLM_FALLBACK_MODEL` is set, every call moves to that model when the main one fails, and `generation_requests.model_name` records the model(s) that actually answered. `TRACE_TO_LANGSMITH=1` sends traces to LangSmith with photos removed; it is refused outside local development because the privacy notice does not cover it.
 
 **Built for factories, warehouses and land in Malaysia.** The property card and search cover the specs industrial buyers screen on: sale or rent, land area (acres), built-up area, ceiling height, power supply (amps or kVA; kVA is converted to amps for search, 1 kVA ≈ 1.39 A at 415 V three-phase), freehold or leasehold with years left, zoning (light, medium or heavy industrial, commercial, agricultural), 40-ft container access and loading bays. The model reads English, Malay and Chinese descriptions (e.g. *kilang*, *ekar*, *pegangan bebas*).
 
@@ -122,7 +125,10 @@ The code follows the concepts in the [Hugging Face Agents Course](https://huggin
 |---|---|
 | Multimodal input (images + text) | `LLMAssistant.write_ads`, `_image_block` |
 | Structured output with a schema | `ListingAnalysis` in `app/ai/schemas.py`, `with_structured_output(..., method="json_schema")` |
-| Tool calling and a bounded tool loop | `LLMAssistant.search_chat`, `search_listings` tool |
+| Tool calling and a bounded tool loop | `LLMAssistant.search_chat`: `create_agent` with `ModelCallLimitMiddleware`, `search_listings` tool |
+| A graph with a loop and a check step | `app/ai/draft_graph.py` (LangGraph `StateGraph`) |
+| Fallback models | `with_fallbacks` (ad writing), `ModelFallbackMiddleware` (search chat) |
+| Tracing with redaction | `app/ai/tracing.py` (LangSmith, `hide_inputs`) |
 | Conversation memory | chat history sent with each turn, capped at 12 messages |
 | Grounding and guarding against hallucination | the model only sees tool results; SQL is built by the app |
 | Prompt injection defence | descriptions and photos marked as data in the prompt; tools are read-only |

@@ -87,11 +87,20 @@
   <section class="panel">
     <h2>Pick an ad</h2>
     <p class="muted small">Drafts appear in random order. Choose one and edit it freely, or write your own.</p>
+    <p class="muted small">Optional: rank the drafts from 1 (most creative) to {{ drafts | length }} (least creative), using each number once. This helps our research and does not change which ad is published.</p>
     {% for d in drafts %}
     <label class="draft">
       <input type="radio" name="choice" value="{{ d.candidate_id }}" required>
       <span class="draft-body">
-        <span class="draft-label">Draft {{ d.display_position }}</span>
+        <span class="draft-label">Draft {{ d.display_position }}
+          <select name="rank_{{ d.candidate_id }}" aria-label="Creativity rank for draft {{ d.display_position }}">
+            <option value="">Rank</option>{% for i in range(1, drafts | length + 1) %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
+          </select>
+        </span>
+        {% if d.check and d.check.unsupported_claims %}
+        <span class="notice warn small">Check before publishing. This draft may say things your description and photos don't support:
+          {% for c in d.check.unsupported_claims %}<br>• {{ c }}{% endfor %}</span>
+        {% endif %}
         <input name="headline_{{ d.candidate_id }}" value="{{ d.headline }}" maxlength="120" aria-label="Headline">
         <textarea name="body_{{ d.candidate_id }}" rows="5" aria-label="Ad text">{{ d.ad_text }}</textarea>
       </span>

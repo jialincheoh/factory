@@ -8,7 +8,7 @@ import re
 from typing import Callable
 
 from .. import geo
-from .schemas import AMPS_PER_KVA, AdDraft, ListingAnalysis, Mismatch, PropertyCard, SearchFilters
+from .schemas import AMPS_PER_KVA, AdDraft, AdResult, ListingAnalysis, Mismatch, PropertyCard, SearchFilters
 
 FEATURES = {
     "overhead crane": ["overhead crane", "crane"],
@@ -174,7 +174,9 @@ class OfflineAssistant:
             )],
             drafts=drafts,
         )
-        return analysis, f"[offline rules, {len(images)} photo(s)]\n{description}"
+        # Drafts reuse the description and card as written, so there is nothing to check.
+        return AdResult(analysis, f"[offline rules, {len(images)} photo(s)]\n{description}", self.model_name,
+                        [{"checked": False, "unsupported_claims": [], "earlier_versions": []} for _ in drafts])
 
     def search_chat(self, history: list[dict], run_search: Callable[[SearchFilters], list[dict]],
                     current: SearchFilters | None = None):
@@ -211,4 +213,4 @@ class OfflineAssistant:
         n = len(results)
         reply = (f"I found {n} listing{'s' if n != 1 else ''} that match{'es' if n == 1 else ''}." if n
                  else "Nothing matches all of that yet. Try dropping a requirement or widening the area.")
-        return reply + " (Offline mode: simple keyword matching.)", f, results
+        return reply + " (Offline mode: simple keyword matching.)", f, results, self.model_name

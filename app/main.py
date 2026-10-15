@@ -272,12 +272,12 @@ async def chat(request: Request):
     def run():
         with db.connect() as conn:
             assistant = get_assistant()
-            reply, filters, results = assistant.search_chat(
+            reply, filters, results, model_name = assistant.search_chat(
                 history, lambda f: db.search_listings(conn, f), current)
             if results is not None:
                 log_events(conn, [r["ad_id"] for r in results], "impression", vid)
             log_search(conn, vid, "text", filters or current, len(results) if results is not None else None,
-                       typed, assistant.model_name)
+                       typed, model_name)
             return reply, filters, results
 
     try:
@@ -447,15 +447,15 @@ def _create_request(conn, agent_id, listing_id, description: str, photos: list[b
     """Call the model, then store the request and every draft in shuffled order."""
     assistant = get_assistant()
     started = time.monotonic()
-    analysis, prompt_text = assistant.write_ads(description, [(p, "image/jpeg") for p in photos],
-                                                config.DRAFTS_PER_REQUEST)
+    result = assistant.write_ads(description, [(p, "image/jpeg") for p in photos], config.DRAFTS_PER_REQUEST)
+    analysis = result.analysis
     latency_ms = int((time.monotonic() - started) * 1000)
 
     request_id, seed = uuid.uuid4(), random.SystemRandom().getrandbits(63)
     conn.execute(
         "INSERT INTO generation_requests (request_id, listing_id, real_estate_agent_id, model_name, "
         "prompt_version, prompt_text, experiment_arm, order_seed, analysis) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-        [request_id, listing_id, agent_id, assistant.model_name, PROMPT_VERSION, prompt_text,
+        [request_id, listing_id, agent_id, result.model_name, PROMPT_VERSION, result.prompt_text,
          EXPERIMENT_ARM, seed, Jsonb(analysis.model_dump(exclude={"drafts"}))])
 
     order = list(range(len(analysis.drafts)))
@@ -466,7 +466,7 @@ def _create_request(conn, agent_id, listing_id, description: str, photos: list[b
             "INSERT INTO candidates (candidate_id, request_id, display_position, headline, ad_text, "
             "raw_response, latency_ms) VALUES (%s,%s,%s,%s,%s,%s,%s)",
             [(uuid.uuid4(), request_id, pos, analysis.drafts[i].headline, analysis.drafts[i].body,
-              Jsonb({"generated_index": i, "analysis": raw}), latency_ms)
+              Jsonb({"generated_index": i, "analysis": raw, "check": result.checks[i]}), latency_ms)
              for pos, i in enumerate(order, 1)])
     return request_id
 
@@ -526,7 +526,8 @@ def _load_request(conn, request_id, agent_id):
 def review(request_id: uuid.UUID, request: Request, agent_id: str = Depends(security.require_agent),
            conn=Depends(db.get_conn)):
     req = _load_request(conn, request_id, agent_id)
-    drafts = conn.execute("SELECT candidate_id, display_position, headline, ad_text FROM candidates "
+    drafts = conn.execute("SELECT candidate_id, display_position, headline, ad_text, raw_response->'check' AS check "
+                          "FROM candidates "
                           "WHERE request_id = %s ORDER BY display_position", [request_id]).fetchall()
     decision = conn.execute("SELECT * FROM decisions WHERE request_id = %s", [request_id]).fetchone()
     photos = conn.execute("SELECT file_name FROM listing_images WHERE listing_id = %s ORDER BY position",
@@ -613,6 +614,20 @@ def card_from_form(form) -> dict:
     }
 
 
+def ranks_from_form(form, candidate_ids: list) -> dict:
+    """Optional creativity ranking: every draft ranked 1..n with no ties, or none at all."""
+    given = {c: str(form.get(f"rank_{c}", "")).strip() for c in candidate_ids}
+    if not any(given.values()):
+        return {}
+    try:
+        ranks = {c: int(v) for c, v in given.items()}
+    except ValueError:
+        raise HTTPException(400, "Rank every draft, or leave the ranking empty.")
+    if sorted(ranks.values()) != list(range(1, len(candidate_ids) + 1)):
+        raise HTTPException(400, "Give each draft a different rank, from 1 (most creative) down.")
+    return ranks
+
+
 @app.post("/agent/requests/{request_id}/publish")
 async def publish(request_id: uuid.UUID, request: Request, agent_id: str = Depends(security.require_agent),
                   conn=Depends(db.get_conn)):
@@ -641,6 +656,9 @@ async def publish(request_id: uuid.UUID, request: Request, agent_id: str = Depen
         raise HTTPException(400, "The ad needs a headline and a body.")
 
     card = card_from_form(form)
+    candidate_ids = [r["candidate_id"] for r in conn.execute(
+        "SELECT candidate_id FROM candidates WHERE request_id = %s", [request_id]).fetchall()]
+    ranks = ranks_from_form(form, candidate_ids)
 
     opened = request.session.pop(f"opened:{request_id}", None)
     final_text = f"{headline}\n\n{body}"
@@ -650,6 +668,9 @@ async def publish(request_id: uuid.UUID, request: Request, agent_id: str = Depen
         [request_id, decision_type, candidate and candidate["candidate_id"], final_text,
          edit_distance(f"{candidate['headline']}\n\n{candidate['ad_text']}", final_text) if candidate else None,
          int(time.time() - opened) if opened else None])
+    with conn.cursor() as cur:
+        cur.executemany("INSERT INTO rankings (request_id, candidate_id, rank) VALUES (%s,%s,%s)",
+                        [(request_id, c, r) for c, r in ranks.items()])
     card["title"] = card["title"] or headline
     card["description_language"] = (req["analysis"] or {}).get("detected_language")
     conn.execute(

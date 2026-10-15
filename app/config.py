@@ -34,11 +34,26 @@ DATABASE_URL = os.environ.get(
 # Set to "offline" to run without an API key (rule-based stand-in, for
 # development and tests only).
 LLM_MODEL = os.environ.get("LLM_MODEL", "openai:gpt-4.1-mini")
+# Optional second model, same format, used when LLM_MODEL fails (quota, outage).
+# The model that actually answered is recorded with each request.
+LLM_FALLBACK_MODEL = os.environ.get("LLM_FALLBACK_MODEL", "")
+
+# Send model calls to LangSmith for debugging. Traces include real estate agents'
+# descriptions and buyers' chat messages (photos are removed), and /privacy does
+# not mention LangSmith, so this is for local development only.
+TRACE_TO_LANGSMITH = os.environ.get("TRACE_TO_LANGSMITH", "0") == "1"
+LANGSMITH_PROJECT = os.environ.get("LANGSMITH_PROJECT", "factory-dev")
 DRAFTS_PER_REQUEST = int(os.environ.get("DRAFTS_PER_REQUEST", "3"))
 
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "")
 # Cookies are marked Secure unless this is "0" (plain-http local development).
 SECURE_COOKIES = os.environ.get("SECURE_COOKIES", "1") != "0"
+
+if TRACE_TO_LANGSMITH and SECURE_COOKIES:
+    raise RuntimeError("TRACE_TO_LANGSMITH is for local development only (SECURE_COOKIES=0): "
+                       "the privacy notice does not cover sending data to LangSmith.")
+if os.environ.get("LANGSMITH_TRACING", "").lower() == "true":
+    raise RuntimeError("Use TRACE_TO_LANGSMITH=1 instead of LANGSMITH_TRACING, so photos are removed from traces.")
 
 UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", ROOT / "uploads"))
 MAX_IMAGES = 8
