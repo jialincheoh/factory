@@ -366,3 +366,48 @@ def test_searches_are_logged_with_an_anonymous_visitor_id():
         assert vid_t == vid_f  # same visit, same anonymous ID
         n = conn.execute("SELECT count(*) FROM ad_events WHERE visitor_id = %s", [vid_t]).fetchone()[0]
     assert n >= 0
+
+
+def test_model_calls_logged_and_contact_details_masked(agent):
+    client = TestClient(app)
+    token = sign_in(client, agent)
+    desc = "Gudang untuk disewa di Senai, 20,000 sqft, 200A. Call Ali 012-345 6789 or ali@example.com."
+    r = client.post("/agent/new", data={"description": desc, "csrf": token},
+                    files=[("photos", ("a.jpg", jpeg_with_gps(), "image/jpeg"))], follow_redirects=False)
+    request_id = r.headers["location"].rsplit("/", 1)[1]
+    prompt = db_one("SELECT prompt_text FROM generation_requests WHERE request_id = %s", [request_id])[0]
+    assert "012-345 6789" not in prompt and "[phone]" in prompt and "[email]" in prompt
+    drafts = db_one("SELECT string_agg(ad_text, ' ') FROM candidates WHERE request_id = %s", [request_id])[0]
+    assert "012-345 6789" not in drafts
+    call = db_one("SELECT job, step, model, ok, is_fallback, prompt_version, prompt_hash, settings FROM model_calls "
+                  "WHERE request_id = %s", [request_id])
+    assert call[:6] == ("write_ads", "analyse", "offline-rules", True, False, "ads-v4-masked") and call[6]
+
+    buyer = TestClient(app)
+    buyer.post("/api/chat", json={"messages": [{"role": "user", "content": "warehouse in Senai, my number 019-876 5432"}]})
+    q, sid = db_one("SELECT query_text, search_id FROM search_events ORDER BY search_id DESC LIMIT 1")
+    assert q == "warehouse in Senai, my number [phone]"
+    assert db_one("SELECT job, prompt_version FROM model_calls WHERE search_id = %s", [sid]) == (
+        "search_chat", "search-v2-scoped")
+
+
+def test_out_of_scope_search_is_declined():
+    r = TestClient(app).post("/api/chat", json={"messages": [{"role": "user", "content": "3 bedroom condo in Bangsar"}]})
+    assert r.status_code == 200 and "factories and warehouses only" in r.json()["reply"] and "count" not in r.json()
+    assert db_one("SELECT declined, result_count FROM search_events ORDER BY search_id DESC LIMIT 1") == (
+        "residential", None)
+    r = TestClient(app).post("/api/chat", json={"messages": [{"role": "user", "content": "factory with office in Senai"}]})
+    assert "count" in r.json()  # an office inside a factory is in scope
+
+
+def test_monitor_report_runs():
+    from psycopg.rows import dict_row
+    from scripts import monitor
+    with psycopg.connect(config.DATABASE_URL, row_factory=dict_row) as conn:
+        alerts = monitor.report(conn, 7)
+        assert isinstance(alerts, list)
+        # A prompt edited without a new version is caught.
+        conn.execute("INSERT INTO model_calls (job, step, model, is_fallback, ok, prompt_version, prompt_hash, settings) "
+                     "VALUES ('search_chat', 'search_chat', 'x:y', false, true, 'search-v2-scoped', 'edited', '{}')")
+        assert any("different prompts" in a for a in monitor.report(conn, 7))
+        conn.rollback()

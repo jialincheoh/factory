@@ -16,8 +16,9 @@ from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from . import config, db, geo, images, security, seo
-from .ai import get_assistant
-from .ai.llm import PROMPT_VERSION
+from .ai import get_assistant, pii
+from .ai.calllog import CallRecorder, emit
+from .ai.llm import AD_PROMPT_FINGERPRINT, PROMPT_VERSION, SEARCH_PROMPT_FINGERPRINT, SEARCH_PROMPT_VERSION
 from .ai.schemas import PROPERTY_TYPES, ZONINGS, SearchFilters
 
 EXPERIMENT_ARM = "random_order_v1"  # drafts shown in seeded random order
@@ -144,15 +145,44 @@ def log_events(conn, ad_ids, event_type: str, vid: str | None = None) -> None:
 
 
 def log_search(conn, vid: str, method: str, filters: SearchFilters, result_count: int | None,
-               query: str | None = None, interpreter: str | None = None) -> None:
-    """One row per search: how it was made, what was typed, the filters it became, and the result count."""
+               query: str | None = None, interpreter: str | None = None, declined: str | None = None) -> int | None:
+    """One row per search: how it was made, what was typed (contact details masked), the filters it
+    became, and the result count. Returns the search_id, or None when search logging is off."""
     if not config.SEARCH_LOGGING:
-        return
-    conn.execute(
-        "INSERT INTO search_events (visitor_id, method, query_text, filters, result_count, interpreter) "
-        "VALUES (%s, %s, %s, %s, %s, %s)",
-        [vid, method, query[:1000] if query else None, Jsonb(filters.model_dump(exclude_none=True, exclude_defaults=True)),
-         result_count, interpreter])
+        return None
+    row = conn.execute(
+        "INSERT INTO search_events (visitor_id, method, query_text, filters, result_count, interpreter, declined) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING search_id",
+        [vid, method, pii.mask(query)[:1000] if query else None,
+         Jsonb(filters.model_dump(exclude_none=True, exclude_defaults=True)), result_count, interpreter,
+         declined]).fetchone()
+    return row["search_id"]
+
+
+def log_model_calls(conn, job: str, recorder: CallRecorder, request_id=None, search_id=None) -> None:
+    """One model_calls row per model call, for monitoring (see scripts/monitor.py)."""
+    assistant = get_assistant()
+    version, fingerprint = ((PROMPT_VERSION, AD_PROMPT_FINGERPRINT) if job == "write_ads"
+                            else (SEARCH_PROMPT_VERSION, SEARCH_PROMPT_FINGERPRINT))
+    emit(job, recorder.calls)
+    with conn.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO model_calls (job, request_id, search_id, step, model, served_by, is_fallback, ok, error, "
+            "latency_ms, input_tokens, output_tokens, prompt_version, prompt_hash, settings) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            [(job, request_id, search_id, c["step"], c["model"], c["served_by"],
+              bool(c["model"]) and c["model"] != assistant.model_name, c["ok"], c["error"], c["latency_ms"],
+              c["input_tokens"], c["output_tokens"], version, fingerprint, Jsonb(assistant.settings()))
+             for c in recorder.calls])
+
+
+def log_failed_calls(job: str, recorder: CallRecorder, **ids) -> None:
+    """Record the calls of a request that failed, outside its rolled-back transaction."""
+    try:
+        with db.connect() as conn:
+            log_model_calls(conn, job, recorder, **ids)
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------- buyer side
@@ -268,31 +298,33 @@ async def chat(request: Request):
         raise HTTPException(400, "Send a message.")
     current = filters_from_form(body.get("filters") or {})
     vid, typed = visitor_id(request), history[-1]["content"]
+    recorder = CallRecorder()
 
     def run():
         with db.connect() as conn:
-            assistant = get_assistant()
-            reply, filters, results, model_name = assistant.search_chat(
-                history, lambda f: db.search_listings(conn, f), current)
-            if results is not None:
-                log_events(conn, [r["ad_id"] for r in results], "impression", vid)
-            log_search(conn, vid, "text", filters or current, len(results) if results is not None else None,
-                       typed, model_name)
-            return reply, filters, results
+            res = get_assistant().search_chat(history, lambda f: db.search_listings(conn, f), current, recorder)
+            if res.results is not None:
+                log_events(conn, [r["ad_id"] for r in res.results], "impression", vid)
+            search_id = log_search(conn, vid, "text", res.filters or current,
+                                   len(res.results) if res.results is not None else None,
+                                   typed, res.model_name, res.declined)
+            log_model_calls(conn, "search_chat", recorder, search_id=search_id)
+            return res
 
     try:
-        reply, filters, results = await run_in_threadpool(run)
+        res = await run_in_threadpool(run)
     except Exception:
         try:  # record the failed search too, so failure rates can be measured
             with db.connect() as conn:
-                log_search(conn, vid, "text", current, None, typed, "error")
+                search_id = log_search(conn, vid, "text", current, None, typed, "error")
+                log_model_calls(conn, "search_chat", recorder, search_id=search_id)
         except Exception:
             pass
         return JSONResponse({"reply": "Sorry, search is unavailable right now. Please try again."}, status_code=502)
 
-    out = {"reply": reply}
-    if results is not None:
-        out.update(results_payload(results), form=form_from_filters(filters))
+    out = {"reply": res.reply}
+    if res.results is not None:
+        out.update(results_payload(res.results), form=form_from_filters(res.filters))
     return out
 
 
@@ -443,11 +475,13 @@ def new_listing_form(request: Request, agent_id: str = Depends(security.require_
     return render(request, "agent/new.html", max_images=config.MAX_IMAGES)
 
 
-def _create_request(conn, agent_id, listing_id, description: str, photos: list[bytes]) -> uuid.UUID:
-    """Call the model, then store the request and every draft in shuffled order."""
+def _create_request(conn, agent_id, listing_id, description: str, photos: list[bytes],
+                    recorder: CallRecorder) -> uuid.UUID:
+    """Call the model, then store the request, every draft in shuffled order, and the model calls."""
     assistant = get_assistant()
     started = time.monotonic()
-    result = assistant.write_ads(description, [(p, "image/jpeg") for p in photos], config.DRAFTS_PER_REQUEST)
+    result = assistant.write_ads(description, [(p, "image/jpeg") for p in photos], config.DRAFTS_PER_REQUEST,
+                                 recorder)
     analysis = result.analysis
     latency_ms = int((time.monotonic() - started) * 1000)
 
@@ -468,6 +502,7 @@ def _create_request(conn, agent_id, listing_id, description: str, photos: list[b
             [(uuid.uuid4(), request_id, pos, analysis.drafts[i].headline, analysis.drafts[i].body,
               Jsonb({"generated_index": i, "analysis": raw, "check": result.checks[i]}), latency_ms)
              for pos, i in enumerate(order, 1)])
+    log_model_calls(conn, "write_ads", recorder, request_id=request_id)
     return request_id
 
 
@@ -494,6 +529,8 @@ async def create_listing(request: Request, agent_id: str = Depends(security.requ
         return render(request, "agent/new.html", 400, error=error, description=description,
                       max_images=config.MAX_IMAGES)
 
+    recorder = CallRecorder()
+
     def run():
         with db.connect() as conn:
             listing_id = uuid.uuid4()
@@ -502,11 +539,12 @@ async def create_listing(request: Request, agent_id: str = Depends(security.requ
             for pos, (data, w, h) in enumerate(processed, 1):
                 conn.execute("INSERT INTO listing_images (image_id, listing_id, position, file_name, width, height) "
                              "VALUES (%s,%s,%s,%s,%s,%s)", [uuid.uuid4(), listing_id, pos, images.save(data), w, h])
-            return _create_request(conn, agent_id, listing_id, description, [d for d, _, _ in processed])
+            return _create_request(conn, agent_id, listing_id, description, [d for d, _, _ in processed], recorder)
 
     try:
         request_id = await run_in_threadpool(run)
     except Exception as exc:
+        log_failed_calls("write_ads", recorder)
         return render(request, "agent/new.html", 502, description=description, max_images=config.MAX_IMAGES,
                       error=f"The ad writer failed ({type(exc).__name__}). Nothing was saved; please try again.")
     return RedirectResponse(f"/agent/requests/{request_id}", status_code=303)
@@ -688,6 +726,7 @@ async def publish(request_id: uuid.UUID, request: Request, agent_id: str = Depen
 async def regenerate(request_id: uuid.UUID, request: Request, agent_id: str = Depends(security.require_agent),
                      csrf: str = Form(None)):
     security.check_csrf(request, csrf)
+    recorder = CallRecorder()
 
     def run():
         with db.connect() as conn:
@@ -699,9 +738,13 @@ async def regenerate(request_id: uuid.UUID, request: Request, agent_id: str = De
             names = conn.execute("SELECT file_name FROM listing_images WHERE listing_id = %s ORDER BY position",
                                  [req["listing_id"]]).fetchall()
             photos = [(config.UPLOAD_DIR / n["file_name"]).read_bytes() for n in names]
-            return _create_request(conn, agent_id, req["listing_id"], req["description_original"], photos)
+            return _create_request(conn, agent_id, req["listing_id"], req["description_original"], photos, recorder)
 
-    new_id = await run_in_threadpool(run)
+    try:
+        new_id = await run_in_threadpool(run)
+    except Exception:
+        log_failed_calls("write_ads", recorder)
+        raise
     return RedirectResponse(f"/agent/requests/{new_id}", status_code=303)
 
 

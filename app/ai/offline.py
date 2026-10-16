@@ -5,10 +5,14 @@ at photos or translate; the UI says so on every result it produces. It knows
 the common English and Malay terms for factories and warehouses.
 """
 import re
+import time
 from typing import Callable
 
 from .. import geo
-from .schemas import AMPS_PER_KVA, AdDraft, AdResult, ListingAnalysis, Mismatch, PropertyCard, SearchFilters
+from . import pii
+from .llm import DECLINE_REPLIES
+from .schemas import (AMPS_PER_KVA, AdDraft, AdResult, ChatResult, ListingAnalysis, Mismatch, PropertyCard,
+                      SearchFilters)
 
 FEATURES = {
     "overhead crane": ["overhead crane", "crane"],
@@ -26,6 +30,11 @@ FEATURES = {
 TYPES = [
     ("warehouse", ["warehouse", "gudang", "logistics hub"]),
     ("factory", ["factory", "factories", "kilang", "plant"]),
+]
+# Requests the site cannot serve, checked only when no factory or warehouse word is present.
+OUT_OF_SCOPE = [
+    ("residential", ["house", "condo", "apartment", "rumah", "kondo", "bungalow", "terrace"]),
+    ("shop_or_office", ["shop lot", "shoplot", "shop office", "office space", "kedai"]),
 ]
 NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6}
 _NUM = r"(\d+(?:\.\d+)?|" + "|".join(NUMBER_WORDS) + r")"
@@ -109,13 +118,25 @@ def _container(text: str) -> bool:
     return bool(re.search(r"container|trailer|40\s*-?\s*f(?:ee)?t", text))
 
 
+def _record(recorder, step: str, started: float) -> None:
+    if recorder is not None:
+        recorder.calls.append({"step": step, "model": OfflineAssistant.model_name, "temperature": None,
+                               "latency_ms": int((time.monotonic() - started) * 1000), "ok": True, "error": None,
+                               "served_by": OfflineAssistant.model_name, "input_tokens": None, "output_tokens": None})
+
+
 class OfflineAssistant:
     model_name = "offline-rules"
 
     def __init__(self, currency: str = "$"):
         self.currency = currency
 
-    def write_ads(self, description: str, images: list[tuple[bytes, str]], n_drafts: int):
+    def settings(self) -> dict:
+        return {"rules": "offline"}
+
+    def write_ads(self, description: str, images: list[tuple[bytes, str]], n_drafts: int, recorder=None):
+        started = time.monotonic()
+        description = pii.mask(description)
         text = description.lower()
         price = None
         m = re.search(r"(?:rm|\$|price|harga|asking|rent|sewa)\s*:?\s*(?:rm|\$)?\s*([\d,]+(?:\.\d+)?)\s*(k|m|mil|million|juta)?\b", text)
@@ -175,16 +196,24 @@ class OfflineAssistant:
             drafts=drafts,
         )
         # Drafts reuse the description and card as written, so there is nothing to check.
+        _record(recorder, "analyse", started)
         return AdResult(analysis, f"[offline rules, {len(images)} photo(s)]\n{description}", self.model_name,
                         [{"checked": False, "unsupported_claims": [], "earlier_versions": []} for _ in drafts])
 
     def search_chat(self, history: list[dict], run_search: Callable[[SearchFilters], list[dict]],
-                    current: SearchFilters | None = None):
+                    current: SearchFilters | None = None, recorder=None) -> ChatResult:
+        started = time.monotonic()
+        latest = history[-1]["content"].lower() if history else ""
+        if not _types(latest):
+            for reason, words in OUT_OF_SCOPE:
+                if any(re.search(rf"\b{w}s?\b", latest) for w in words):
+                    _record(recorder, "search_chat", started)
+                    return ChatResult(DECLINE_REPLIES[reason], None, None, self.model_name, declined=reason)
         # Start from the filter bar, then apply requirements from every buyer
         # turn so follow-ups refine the search.
         f = current.model_copy(deep=True) if current else SearchFilters()
         for turn in (t for t in history if t["role"] == "user"):
-            text = turn["content"].lower()
+            text = pii.mask(turn["content"]).lower()
             f.deal_type = _deal(text) or f.deal_type
             f.property_types = _types(text) or f.property_types
             f.features = sorted(set(f.features) | set(_features(text)))
@@ -213,4 +242,5 @@ class OfflineAssistant:
         n = len(results)
         reply = (f"I found {n} listing{'s' if n != 1 else ''} that match{'es' if n == 1 else ''}." if n
                  else "Nothing matches all of that yet. Try dropping a requirement or widening the area.")
-        return reply + " (Offline mode: simple keyword matching.)", f, results, self.model_name
+        _record(recorder, "search_chat", started)
+        return ChatResult(reply + " (Offline mode: simple keyword matching.)", f, results, self.model_name)

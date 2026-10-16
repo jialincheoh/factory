@@ -1,10 +1,11 @@
 """Unit tests of the model layer that need no API key: the draft-check graph,
 the search chat loop with fake chat models (including the fallback), and
 photo redaction for tracing."""
+import pytest
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 
-from app.ai import draft_graph, llm
+from app.ai import calllog, draft_graph, llm, pii
 from app.ai.schemas import AdDraft, ListingAnalysis, PropertyCard, SearchFilters
 from app.ai.tracing import PHOTO, redact
 
@@ -110,20 +111,26 @@ def search_replies(model_name):
 def test_search_chat_runs_tool_loop(monkeypatch):
     assistant = fake_assistant(monkeypatch, ToolFakeModel(messages=search_replies("primary")))
     seen = []
-    reply, filters, results, model = assistant.search_chat(
+    res = assistant.search_chat(
         [{"role": "user", "content": "factory in Senai"}], lambda f: seen.append(f) or [{"title": "A"}, {"title": "B"}])
-    assert reply == "Two factories in Senai match."
-    assert filters == SearchFilters(location="Senai") and len(results) == 2 and len(seen) == 1
-    assert model == "fake:primary"
+    assert res.reply == "Two factories in Senai match."
+    assert res.filters == SearchFilters(location="Senai") and len(res.results) == 2 and len(seen) == 1
+    assert res.model_name == "fake:primary" and res.declined is None
 
 
 def test_search_chat_falls_back_and_records_model(monkeypatch):
     assistant = fake_assistant(monkeypatch, BrokenModel(messages=iter([])),
                                ToolFakeModel(messages=search_replies("backup")))
-    reply, _, results, model = assistant.search_chat([{"role": "user", "content": "factory in Senai"}],
-                                                     lambda f: [{"title": "A"}])
-    assert reply == "Two factories in Senai match." and len(results) == 1
-    assert model == "fake:backup"
+    recorder = calllog.CallRecorder()
+    res = assistant.search_chat([{"role": "user", "content": "factory in Senai"}], lambda f: [{"title": "A"}],
+                                recorder=recorder)
+    assert res.reply == "Two factories in Senai match." and len(res.results) == 1
+    assert res.model_name == "fake:backup"
+    # Every call is recorded. The main model is tried first on each of the two loop steps, fails,
+    # and the backup answers.
+    assert [c["ok"] for c in recorder.calls] == [False, True, False, True]
+    assert recorder.calls[0]["error"] == "RuntimeError" and recorder.calls[1]["served_by"] == "backup"
+    assert {c["step"] for c in recorder.calls} == {"search_chat"}
 
 
 def test_redact_removes_photos_but_keeps_text():
@@ -134,3 +141,51 @@ def test_redact_removes_photos_but_keeps_text():
     content = out["messages"][0]["content"]
     assert content[0]["text"] == "Factory in Senai" and content[1]["base64"] == PHOTO
     assert out["images"][0] == [PHOTO, "image/jpeg"] and out["url"] == PHOTO
+
+
+def test_out_of_scope_request_gets_fixed_reply_without_search(monkeypatch):
+    decline = AIMessage("", tool_calls=[{"name": "decline_request", "args": {"reason": "shop_or_office"}, "id": "1"}],
+                        response_metadata={"model_name": "primary"})
+    assistant = fake_assistant(monkeypatch, ToolFakeModel(messages=iter([decline])))  # one reply only
+    recorder = calllog.CallRecorder()
+    res = assistant.search_chat([{"role": "user", "content": "shop lot in Puchong"}],
+                                lambda f: pytest.fail("must not search"), recorder=recorder)
+    assert res.declined == "shop_or_office" and res.reply == llm.DECLINE_REPLIES["shop_or_office"]
+    assert res.results is None and len(recorder.calls) == 1  # no second model call
+
+
+def test_buyer_contact_details_are_masked_before_the_model(monkeypatch):
+    seen = []
+
+    class Spy(ToolFakeModel):
+        def _generate(self, messages, *args, **kwargs):
+            seen.extend(m.text for m in messages)
+            return super()._generate(messages, *args, **kwargs)
+
+    assistant = fake_assistant(monkeypatch, Spy(messages=search_replies("primary")))
+    assistant.search_chat([{"role": "user", "content": "factory in Senai, call me 012-345 6789"}], lambda f: [])
+    assert not any("012-345 6789" in t for t in seen) and any("[phone]" in t for t in seen)
+
+
+def test_mask_contact_details_but_not_specs():
+    assert pii.mask("Call 012-345 6789, +60 3-5555 1234 or ali@abc.com.my; IC 850101-14-5678") == (
+        "Call [phone], [phone] or [email]; IC [IC number]")
+    specs = "RM 4,500,000, 0.5 acre, 400A, 43560 sqft, 2 ekar, Lot 12345, Jalan 6/10, built 2024"
+    assert pii.mask(specs) == specs
+
+
+# Each prompt version pinned to its prompt text. If this fails, a prompt changed:
+# bump PROMPT_VERSION or SEARCH_PROMPT_VERSION and record the new fingerprint here.
+PROMPT_FINGERPRINTS = {"ads-v4-masked": "2dc3ba5d30e8", "search-v2-scoped": "a3b23c6b519d"}
+
+
+def test_prompt_edits_need_a_new_version():
+    assert PROMPT_FINGERPRINTS[llm.PROMPT_VERSION] == llm.AD_PROMPT_FINGERPRINT
+    assert PROMPT_FINGERPRINTS[llm.SEARCH_PROMPT_VERSION] == llm.SEARCH_PROMPT_FINGERPRINT
+
+
+def test_invalid_structured_output_is_recorded_as_failure():
+    recorder = calllog.CallRecorder()
+    recorder.calls.append({"step": "check_drafts", "ok": True, "error": None})
+    recorder.format_failure("check_drafts")
+    assert recorder.calls[0] == {"step": "check_drafts", "ok": False, "error": "InvalidStructuredOutput"}

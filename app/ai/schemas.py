@@ -100,6 +100,25 @@ class AdResult:
     checks: list[dict] = field(default_factory=list)  # per draft, in the order of analysis.drafts
 
 
+@dataclass
+class ChatResult:
+    """What search_chat hands back to the web app (not a model output)."""
+    reply: str
+    filters: Optional["SearchFilters"]  # None when the model did not search
+    results: Optional[list[dict]]
+    model_name: str
+    declined: Optional[str] = None      # reason, when the request was outside what the site lists
+
+
+OutOfScopeReason = Literal["residential", "shop_or_office", "land_only", "unrelated"]
+
+
+class OutOfScope(BaseModel):
+    reason: OutOfScopeReason = Field(
+        description="residential: houses, condos, apartments; shop_or_office: shop lots, shop offices, office space; "
+                    "land_only: vacant land without a building; unrelated: not about finding property")
+
+
 class SearchFilters(BaseModel):
     """Filters the buyer-side assistant can apply to published listings."""
     deal_type: Optional[DealType] = Field(None, description="'rent' for rent/lease, 'sale' to buy; omit if not said")
