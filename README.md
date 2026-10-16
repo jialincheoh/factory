@@ -117,6 +117,19 @@ Run the app tests (they create and drop a separate `listing_ads_test` database a
 .venv/bin/python -m pytest tests
 ```
 
+### Deploy to Google Cloud (factory.my)
+
+Cloud Run in Singapore, Cloud SQL Postgres 16, a private Cloud Storage bucket for photos (mounted at `/uploads`), and Secret Manager. Settings are in `deploy/config.sh`; the project needs an open billing account.
+
+```sh
+deploy/setup.sh          # once: services, database, bucket, secrets, permissions
+deploy/deploy.sh         # every release: build, run new migrations, deploy; prints the run.app URL
+deploy/create-agent.sh --email you@example.com --name "Your Name" --phone "+60 ..."
+deploy/domain.sh         # once the domain is registered: verify ownership, map it, print DNS records
+```
+
+Do not run `scripts.seed_demo` against production; its listings are made up.
+
 ### Learning map
 
 The code follows the concepts in the [Hugging Face Agents Course](https://huggingface.co/learn/agents-course/unit0/introduction), [LangChain docs](https://docs.langchain.com) and Chip Huyen's *AI Engineering*:
