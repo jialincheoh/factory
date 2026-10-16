@@ -349,8 +349,9 @@ def listing_page(listing_id: uuid.UUID, slug: str, request: Request, conn=Depend
     path = seo.listing_path(listing)
     if request.url.path != path:  # title changed or slug mistyped: one canonical URL
         return RedirectResponse(path, status_code=301)
-    photos = conn.execute("SELECT file_name, width, height FROM listing_images WHERE listing_id = %s ORDER BY position",
-                          [listing_id]).fetchall()
+    photos = conn.execute("SELECT i.file_name, i.width, i.height, i.caption FROM listing_images i "
+                          "JOIN listings l USING (listing_id) WHERE i.listing_id = %s "
+                          "ORDER BY (i.position = l.cover_position) DESC, i.position", [listing_id]).fetchall()
     log_events(conn, [listing["ad_id"]], "click", visitor_id(request))
 
     kind = type_label(listing["property_type"])
@@ -498,9 +499,10 @@ def _create_request(conn, agent_id, listing_id, description: str, photos: list[b
     with conn.cursor() as cur:
         cur.executemany(
             "INSERT INTO candidates (candidate_id, request_id, display_position, headline, ad_text, "
-            "raw_response, latency_ms) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+            "raw_response, latency_ms, cover_position) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
             [(uuid.uuid4(), request_id, pos, analysis.drafts[i].headline, analysis.drafts[i].body,
-              Jsonb({"generated_index": i, "analysis": raw, "check": result.checks[i]}), latency_ms)
+              Jsonb({"generated_index": i, "analysis": raw, "check": result.checks[i]}), latency_ms,
+              analysis.drafts[i].cover_photo)
              for pos, i in enumerate(order, 1)])
     log_model_calls(conn, "write_ads", recorder, request_id=request_id)
     return request_id
@@ -564,11 +566,12 @@ def _load_request(conn, request_id, agent_id):
 def review(request_id: uuid.UUID, request: Request, agent_id: str = Depends(security.require_agent),
            conn=Depends(db.get_conn)):
     req = _load_request(conn, request_id, agent_id)
-    drafts = conn.execute("SELECT candidate_id, display_position, headline, ad_text, raw_response->'check' AS check "
+    drafts = conn.execute("SELECT candidate_id, display_position, headline, ad_text, cover_position, "
+                          "raw_response->'check' AS check "
                           "FROM candidates "
                           "WHERE request_id = %s ORDER BY display_position", [request_id]).fetchall()
     decision = conn.execute("SELECT * FROM decisions WHERE request_id = %s", [request_id]).fetchone()
-    photos = conn.execute("SELECT file_name FROM listing_images WHERE listing_id = %s ORDER BY position",
+    photos = conn.execute("SELECT position, file_name FROM listing_images WHERE listing_id = %s ORDER BY position",
                           [req["listing_id"]]).fetchall()
     request.session[f"opened:{request_id}"] = time.time()  # for seconds_to_decide
     analysis = req["analysis"] or {}
@@ -579,8 +582,9 @@ def review(request_id: uuid.UUID, request: Request, agent_id: str = Depends(secu
           {"lat": geo.MALAYSIA_CENTRE[0], "lng": geo.MALAYSIA_CENTRE[1], "zoom": 6}
     if known and not card.get("state"):
         card["state"] = known[0]
+    captions = {c["photo"]: c["caption"] for c in analysis.get("photo_captions") or []}
     return render(request, "agent/review.html", req=req, analysis=analysis, card=card, drafts=drafts,
-                  decision=decision, photos=photos, pin=pin, pin_set=bool(known))
+                  decision=decision, photos=photos, captions=captions, pin=pin, pin_set=bool(known))
 
 
 def edit_distance(a: str, b: str) -> int:
@@ -698,23 +702,35 @@ async def publish(request_id: uuid.UUID, request: Request, agent_id: str = Depen
         "SELECT candidate_id FROM candidates WHERE request_id = %s", [request_id]).fetchall()]
     ranks = ranks_from_form(form, candidate_ids)
 
+    # Cover photo: the agent's pick, else the kept draft's suggestion, else the first photo.
+    n_photos = conn.execute("SELECT count(*) AS n FROM listing_images WHERE listing_id = %s",
+                            [req["listing_id"]]).fetchone()["n"]
+    picked = _opt_int(form.get("cover"), "cover photo")
+    if picked is not None and not 1 <= picked <= n_photos:
+        raise HTTPException(400, "Pick one of the photos as the cover.")
+    cover = picked or (candidate and candidate["cover_position"]) or 1
+
     opened = request.session.pop(f"opened:{request_id}", None)
     final_text = f"{headline}\n\n{body}"
     conn.execute(
         "INSERT INTO decisions (request_id, decision_type, kept_candidate_id, final_text, edit_distance, "
-        "decided_at, seconds_to_decide) VALUES (%s,%s,%s,%s,%s,now(),%s)",
+        "decided_at, seconds_to_decide, cover_position) VALUES (%s,%s,%s,%s,%s,now(),%s,%s)",
         [request_id, decision_type, candidate and candidate["candidate_id"], final_text,
          edit_distance(f"{candidate['headline']}\n\n{candidate['ad_text']}", final_text) if candidate else None,
-         int(time.time() - opened) if opened else None])
+         int(time.time() - opened) if opened else None, cover])
+    with conn.cursor() as cur:  # captions from this request become the photos' alt text
+        cur.executemany("UPDATE listing_images SET caption = %s WHERE listing_id = %s AND position = %s",
+                        [(c["caption"][:200], req["listing_id"], c["photo"])
+                         for c in (req["analysis"] or {}).get("photo_captions") or []])
     with conn.cursor() as cur:
         cur.executemany("INSERT INTO rankings (request_id, candidate_id, rank) VALUES (%s,%s,%s)",
                         [(request_id, c, r) for c, r in ranks.items()])
     card["title"] = card["title"] or headline
     card["description_language"] = (req["analysis"] or {}).get("detected_language")
     conn.execute(
-        "UPDATE listings SET status = 'published', updated_at = now(), "
+        "UPDATE listings SET status = 'published', updated_at = now(), cover_position = %s, "
         + ", ".join(f"{col} = %s" for col in card) + " WHERE listing_id = %s",
-        [*card.values(), req["listing_id"]])  # column names come from card_from_form, never from the request
+        [cover, *card.values(), req["listing_id"]])  # column names come from card_from_form, never from the request
     conn.execute("INSERT INTO published_ads (ad_id, request_id, listing_id, channel, published_at, headline, ad_text) "
                  "VALUES (%s,%s,%s,'own_portal',now(),%s,%s)",
                  [uuid.uuid4(), request_id, req["listing_id"], headline, body])

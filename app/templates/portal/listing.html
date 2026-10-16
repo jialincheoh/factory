@@ -6,7 +6,7 @@
   <div class="viewer" id="viewer" data-count="{{ photos | length }}">
     <div class="viewer-stage">
       {% for p in photos %}
-      <img src="/uploads/{{ p.file_name }}" width="{{ p.width }}" height="{{ p.height }}" alt="{{ listing.title }}, photo {{ loop.index }} of {{ photos | length }}" class="viewer-img{% if loop.first %} active{% endif %}" data-index="{{ loop.index0 }}" {% if loop.first %}fetchpriority="high"{% else %}loading="lazy"{% endif %}>
+      <img src="/uploads/{{ p.file_name }}" width="{{ p.width }}" height="{{ p.height }}" alt="{{ p.caption or listing.title }}, photo {{ loop.index }} of {{ photos | length }}" class="viewer-img{% if loop.first %} active{% endif %}" data-index="{{ loop.index0 }}" {% if loop.first %}fetchpriority="high"{% else %}loading="lazy"{% endif %}>
       {% endfor %}
       {% if photos | length > 1 %}
       <button type="button" class="viewer-nav prev" aria-label="Previous photo">‹</button>

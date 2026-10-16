@@ -182,7 +182,9 @@ class OfflineAssistant:
             (f"Ready for operations{where}", f"Built for logistics and manufacturing: {spec_line}. {description.strip()}"),
             (f"Strategic {kind}{where}", f"A sound long-term asset for owner-occupiers and investors. {description.strip()}"),
         ]
-        drafts = [AdDraft(headline=h[:70], body=b) for h, b in (angles * n_drafts)[:n_drafts]]
+        # Without a model the photos are not looked at: each draft simply leads with a different photo.
+        drafts = [AdDraft(headline=h[:70], body=b, cover_photo=i % len(images) + 1 if images else None)
+                  for i, (h, b) in enumerate((angles * n_drafts)[:n_drafts])]
         analysis = ListingAnalysis(
             detected_language="not detected (offline mode)",
             english_description=description.strip(),

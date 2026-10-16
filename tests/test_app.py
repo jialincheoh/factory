@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from app import config, security
+from app.ai import llm
 from app.main import app, edit_distance
 
 PASSWORD = "correct-horse-battery"
@@ -381,7 +382,7 @@ def test_model_calls_logged_and_contact_details_masked(agent):
     assert "012-345 6789" not in drafts
     call = db_one("SELECT job, step, model, ok, is_fallback, prompt_version, prompt_hash, settings FROM model_calls "
                   "WHERE request_id = %s", [request_id])
-    assert call[:6] == ("write_ads", "analyse", "offline-rules", True, False, "ads-v4-masked") and call[6]
+    assert call[:6] == ("write_ads", "analyse", "offline-rules", True, False, llm.PROMPT_VERSION) and call[6]
 
     buyer = TestClient(app)
     buyer.post("/api/chat", json={"messages": [{"role": "user", "content": "warehouse in Senai, my number 019-876 5432"}]})
@@ -411,3 +412,50 @@ def test_monitor_report_runs():
                      "VALUES ('search_chat', 'search_chat', 'x:y', false, true, 'search-v2-scoped', 'edited', '{}')")
         assert any("different prompts" in a for a in monitor.report(conn, 7))
         conn.rollback()
+
+
+def upload_three_photos(client, token, desc):
+    colours = [(200, 60, 60), (60, 200, 60), (60, 60, 200)]
+    files = []
+    for i, c in enumerate(colours):
+        buf = io.BytesIO(); Image.new("RGB", (640, 480), c).save(buf, "JPEG")
+        files.append(("photos", (f"{i}.jpg", buf.getvalue(), "image/jpeg")))
+    r = client.post("/agent/new", data={"description": desc, "csrf": token}, files=files, follow_redirects=False)
+    request_id = r.headers["location"].rsplit("/", 1)[1]
+    return request_id, client.get(r.headers["location"]).text
+
+
+def test_cover_photo_suggested_per_draft_and_chosen_by_agent(agent):
+    client = TestClient(app)
+    token = sign_in(client, agent)
+    request_id, page = upload_three_photos(client, token, "Factory for sale in Senai, 2 acres, 400A power, freehold.")
+    # Each draft suggests a cover; the offline stand-in leads each draft with a different photo.
+    covers = db_one("SELECT array_agg(cover_position ORDER BY cover_position) FROM candidates WHERE request_id = %s",
+                    [request_id])[0]
+    assert covers == [1, 2, 3] and page.count("Suggested cover: photo") == 3 and 'name="cover"' in page
+    ids = re.findall(r'name="rank_([0-9a-f-]{36})"', page)
+    form = {"csrf": token, "choice": ids[0], f"headline_{ids[0]}": "Cover test factory",
+            f"body_{ids[0]}": "Two acres, 400A.", "property_type": "factory", "deal_type": "sale"}
+    url = f"/agent/requests/{request_id}/publish"
+    assert client.post(url, data={**form, "cover": "9"}).status_code == 400  # no such photo
+
+    assert client.post(url, data={**form, "cover": "3"}, follow_redirects=False).status_code == 303
+    listing_id, cover = db_one("SELECT l.listing_id, l.cover_position FROM listings l JOIN generation_requests g "
+                               "USING (listing_id) WHERE g.request_id = %s", [request_id])
+    assert cover == 3 and db_one("SELECT cover_position FROM decisions WHERE request_id = %s", [request_id])[0] == 3
+    third = db_one("SELECT file_name FROM listing_images WHERE listing_id = %s AND position = 3", [listing_id])[0]
+    home = TestClient(app).get("/").text
+    card = home[home.index("Cover test factory") - 1500:home.index("Cover test factory")]
+    assert third in card  # search results lead with the chosen cover
+
+
+def test_cover_defaults_to_the_kept_drafts_suggestion(agent):
+    client = TestClient(app)
+    token = sign_in(client, agent)
+    request_id, page = upload_three_photos(client, token, "Warehouse for rent in Klang, 30,000 sqft, 32 ft ceiling.")
+    ids = re.findall(r'name="rank_([0-9a-f-]{36})"', page)
+    suggested = db_one("SELECT cover_position FROM candidates WHERE candidate_id = %s", [ids[1]])[0]
+    form = {"csrf": token, "choice": ids[1], f"headline_{ids[1]}": "Klang warehouse",
+            f"body_{ids[1]}": "30,000 sqft.", "property_type": "warehouse", "deal_type": "rent"}
+    assert client.post(f"/agent/requests/{request_id}/publish", data=form, follow_redirects=False).status_code == 303
+    assert db_one("SELECT cover_position FROM decisions WHERE request_id = %s", [request_id])[0] == suggested

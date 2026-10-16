@@ -54,7 +54,7 @@ def build(analyse: Analyse, check: Check, rewrite: Rewrite, max_rewrites: int = 
             if i in failing:
                 old = analysis.drafts[i]
                 history[i].append({"headline": old.headline, "body": old.body, "unsupported_claims": failing[i]})
-                analysis.drafts[i] = AdDraft(headline=draft.headline, body=draft.body)
+                analysis.drafts[i] = AdDraft(headline=draft.headline, body=draft.body, cover_photo=old.cover_photo)
         return {"analysis": analysis, "history": history, "rewrites": state["rewrites"] + 1,
                 "models": state["models"] + [model], "fixed": bool(fixed)}
 

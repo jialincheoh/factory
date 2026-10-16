@@ -21,7 +21,9 @@ def run_graph(first_check, second_check=None):
     checks = iter([first_check, second_check])
 
     def analyse(description, images, n):
-        return analysis_with("200A power.", "400A power and 5 min to the port."), "m:a"
+        a = analysis_with("200A power.", "400A power and 5 min to the port.")
+        a.drafts[1].cover_photo = 2
+        return a, "m:a"
 
     def check(analysis):
         calls.append("check")
@@ -29,7 +31,7 @@ def run_graph(first_check, second_check=None):
 
     def rewrite(analysis, failing):
         calls.append(("rewrite", sorted(failing)))
-        return {i: AdDraft(headline="Fixed", body="200A power.") for i in failing}, "m:b"
+        return {i: AdDraft(headline="Fixed", body="200A power.") for i in failing}, "m:b"  # no cover from the editor
 
     graph = draft_graph.build(analyse, check, rewrite)
     state = graph.invoke({"description": "x", "images": [], "n_drafts": 2})
@@ -50,6 +52,7 @@ def test_failing_draft_is_rewritten_once_and_original_kept():
     checks = draft_graph.draft_checks(state)
     assert checks[1]["earlier_versions"][0]["body"] == "400A power and 5 min to the port."
     assert checks[1]["unsupported_claims"] == [] and state["models"] == ["m:a", "m:a", "m:b", "m:a"]
+    assert state["analysis"].drafts[1].cover_photo == 2  # the rewrite keeps the writer's cover choice
 
 
 def test_still_failing_after_max_rewrites_is_flagged_not_looped():
@@ -176,7 +179,7 @@ def test_mask_contact_details_but_not_specs():
 
 # Each prompt version pinned to its prompt text. If this fails, a prompt changed:
 # bump PROMPT_VERSION or SEARCH_PROMPT_VERSION and record the new fingerprint here.
-PROMPT_FINGERPRINTS = {"ads-v4-masked": "2dc3ba5d30e8", "search-v2-scoped": "a3b23c6b519d"}
+PROMPT_FINGERPRINTS = {"ads-v5-covers": "9d469925a4d8", "search-v2-scoped": "a3b23c6b519d"}
 
 
 def test_prompt_edits_need_a_new_version():

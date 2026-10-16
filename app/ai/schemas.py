@@ -59,6 +59,15 @@ class Mismatch(BaseModel):
 class AdDraft(BaseModel):
     headline: str = Field(description="Ad headline, at most 70 characters")
     body: str = Field(description="Ad body in marketable English, 60-120 words, no claims beyond the facts")
+    cover_photo: Optional[int] = Field(
+        None, ge=1, description="Number of the photo to show first with this draft: the one that best supports its "
+                                "angle (e.g. loading bays for a logistics angle, the building front for an investment angle)")
+
+
+class PhotoCaption(BaseModel):
+    photo: int = Field(ge=1, description="Photo number, starting at 1")
+    caption: str = Field(description="What the photo shows, at most 12 words, e.g. 'Loading bay with two roller "
+                                     "shutters'. Only what is visible; no sizes, specs or condition you cannot see")
 
 
 class ListingAnalysis(BaseModel):
@@ -68,6 +77,7 @@ class ListingAnalysis(BaseModel):
     card: PropertyCard
     mismatches: list[Mismatch] = Field(default_factory=list)
     drafts: list[AdDraft] = Field(description="Distinct ad drafts that differ in angle and tone")
+    photo_captions: list[PhotoCaption] = Field(default_factory=list, description="One caption per photo")
 
 
 class DraftVerdict(BaseModel):
@@ -83,8 +93,10 @@ class DraftCheck(BaseModel):
     verdicts: list[DraftVerdict]
 
 
-class FixedDraft(AdDraft):
+class FixedDraft(BaseModel):
     draft: int = Field(description="Number of the draft being fixed")
+    headline: str = Field(description="Ad headline, at most 70 characters")
+    body: str = Field(description="Ad body in marketable English, 60-120 words, no claims beyond the facts")
 
 
 class FixedDrafts(BaseModel):

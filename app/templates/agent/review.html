@@ -2,7 +2,7 @@
 {% block head_extra %}{% include "_map_assets.html" %}{% endblock %}
 {% block content %}
 <h1>Review before publishing</h1>
-<div class="thumbs large">{% for p in photos %}<img src="/uploads/{{ p.file_name }}" alt="Photo {{ loop.index }}">{% endfor %}</div>
+<div class="thumbs large">{% for p in photos %}<img src="/uploads/{{ p.file_name }}" alt="Photo {{ p.position }}{% if captions[p.position] %}: {{ captions[p.position] }}{% endif %}">{% endfor %}</div>
 
 {% if decision %}
   <p class="notice">This request is closed ({{ decision.decision_type | replace('_', ' ') }}).
@@ -101,6 +101,7 @@
         <span class="notice warn small">Check before publishing. This draft may say things your description and photos don't support:
           {% for c in d.check.unsupported_claims %}<br>• {{ c }}{% endfor %}</span>
         {% endif %}
+        {% if d.cover_position %}{% set cp = photos[d.cover_position - 1] %}<span class="draft-cover small muted"><img src="/uploads/{{ cp.file_name }}" width="72" height="48" alt="">Suggested cover: photo {{ d.cover_position }}{% if captions[d.cover_position] %} ({{ captions[d.cover_position] }}){% endif %}</span>{% endif %}
         <input name="headline_{{ d.candidate_id }}" value="{{ d.headline }}" maxlength="120" aria-label="Headline">
         <textarea name="body_{{ d.candidate_id }}" rows="5" aria-label="Ad text">{{ d.ad_text }}</textarea>
       </span>
@@ -114,6 +115,16 @@
         <textarea name="body_own" rows="5" placeholder="Ad text" aria-label="Ad text"></textarea>
       </span>
     </label>
+  </section>
+
+  <section class="panel">
+    <h2>Cover photo</h2>
+    <p class="muted small">Buyers see the cover first, in search results and on the listing page. Leave this empty to use the cover suggested with the draft you pick.</p>
+    <div class="cover-pick">
+      {% for p in photos %}
+      <label><input type="radio" name="cover" value="{{ p.position }}"><img src="/uploads/{{ p.file_name }}" width="120" height="80" alt=""><span class="small">Photo {{ p.position }}{% if captions[p.position] %}: {{ captions[p.position] }}{% endif %}</span></label>
+      {% endfor %}
+    </div>
   </section>
   <div class="row-between">
     <button class="button" type="submit">Publish ad</button>

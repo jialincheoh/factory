@@ -33,7 +33,7 @@ from .schemas import (AdDraft, AdResult, ChatResult, DraftCheck, FixedDrafts, Li
                       SearchFilters)
 
 # Bump when a prompt below changes; tests/test_ai.py pins each version to its prompt fingerprint.
-PROMPT_VERSION = "ads-v4-masked"
+PROMPT_VERSION = "ads-v5-covers"
 SEARCH_PROMPT_VERSION = "search-v2-scoped"
 MODEL_TIMEOUT_S = 60  # per model call; reading several photos can take a while
 
@@ -44,6 +44,8 @@ Steps:
 2. Look at every photo and compare it with the description. Report a mismatch when the description claims something the photos contradict (e.g. "high ceiling" but the photo shows a low single-storey shed; "flat land" but the photo shows a slope), when a claim matters to buyers and cannot be confirmed from photos (power supply, tenure, zoning are paperwork, so mark these 'info' only if the agent should double-check), or when the photos show a selling point the description omits (loading bays, overhead crane, office block, guardhouse, wide road). Name the photo. Do not invent problems; an empty list is fine.
 3. Fill the property card. Use only facts stated in the description or clearly visible in the photos. Convert units as the field descriptions say. Leave a field empty rather than guess numbers such as land area, power, ceiling height or price.
 4. Write {n} ad drafts in marketable English for business buyers. Make them genuinely different (for example: operations/logistics angle, investment/yield angle, expansion/manufacturing angle). Lead with the specs industrial buyers screen on (location and highway access, land and built-up area, power, ceiling height, tenure, container access). Never state anything the card does not support, and never mention a feature flagged as a 'warning' mismatch.
+
+5. Choose the cover photo for each draft: the photo that best supports that draft's angle, so different drafts may lead with different photos. Then caption every photo in a few words, describing only what is visible.
 
 Contact details in the description have been replaced with placeholders such as [phone] or [email]. Never put contact details or these placeholders in a draft: buyers reveal the agent's phone number on the listing page.
 
@@ -210,8 +212,12 @@ class LLMAssistant:
         finally:
             calllog.current.reset(token)
         # Output guard: a draft must not carry contact details (enquiries go through the phone reveal).
-        for d in state["analysis"].drafts:
+        analysis = state["analysis"]
+        for d in analysis.drafts:
             d.headline, d.body = pii.mask(d.headline), pii.mask(d.body)
+            if d.cover_photo is not None and not 1 <= d.cover_photo <= len(images):
+                d.cover_photo = None  # a photo number that does not exist
+        analysis.photo_captions = [c for c in analysis.photo_captions if 1 <= c.photo <= len(images)]
         # Stored in generation_requests.prompt_text; photos are referenced, not inlined.
         prompt_text = (f"[system]\n{WRITE_ADS_SYSTEM.format(n=n_drafts)}\n\n[user]\n{_user_text(description, images)}\n"
                        + "".join(f"[photo {i}: {mime}, {len(data)} bytes]\n" for i, (data, mime) in enumerate(images, 1))

@@ -255,3 +255,13 @@ details summary { cursor: pointer; color: var(--muted); }
 .legal ul { padding-left: 1.2rem; }
 .legal li { margin: .35rem 0; }
 .legal hr { margin: 3rem 0; border: 0; border-top: 1px solid var(--line); }
+
+/* Cover photo: suggestion on each draft, and the agent's pick */
+.draft-cover { display: flex; align-items: center; gap: 8px; }
+.draft-cover img { width: 72px; height: 48px; object-fit: cover; }
+.cover-pick { display: flex; flex-wrap: wrap; gap: 12px; }
+.cover-pick label { display: flex; flex-direction: column; gap: 4px; width: 132px; cursor: pointer; }
+.cover-pick img { width: 120px; height: 80px; object-fit: cover; border: 3px solid transparent; }
+.cover-pick input { position: absolute; opacity: 0; }
+.cover-pick input:checked + img { border-color: var(--accent, #1f3a5f); }
+.cover-pick input:focus-visible + img { outline: 2px solid currentColor; }
