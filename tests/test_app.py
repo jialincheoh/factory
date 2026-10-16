@@ -459,3 +459,20 @@ def test_cover_defaults_to_the_kept_drafts_suggestion(agent):
             f"body_{ids[1]}": "30,000 sqft.", "property_type": "warehouse", "deal_type": "rent"}
     assert client.post(f"/agent/requests/{request_id}/publish", data=form, follow_redirects=False).status_code == 303
     assert db_one("SELECT cover_position FROM decisions WHERE request_id = %s", [request_id])[0] == suggested
+
+
+def test_chat_is_rate_limited_per_visitor(monkeypatch):
+    monkeypatch.setattr(security, "CHAT_PER_VISITOR", security.RateLimit(2, 600))
+    client = TestClient(app)
+    msg = {"messages": [{"role": "user", "content": "warehouse in Klang"}]}
+    assert [client.post("/api/chat", json=msg).status_code for _ in range(3)] == [200, 200, 429]
+    assert TestClient(app).post("/api/chat", json=msg).status_code == 200  # another visitor is unaffected
+
+
+def test_ad_writing_is_rate_limited_per_agent(agent, monkeypatch):
+    monkeypatch.setattr(security, "ADS_PER_AGENT", security.RateLimit(0, 3600))
+    client = TestClient(app)
+    token = sign_in(client, agent)
+    r = client.post("/agent/new", data={"description": "Factory for sale in Senai with 400A power.", "csrf": token},
+                    files=[("photos", ("a.jpg", jpeg_with_gps(), "image/jpeg"))])
+    assert r.status_code == 429 and "limit for new ads" in r.text

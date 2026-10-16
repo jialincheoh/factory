@@ -1,4 +1,4 @@
-"""Sign-in, sessions and CSRF for the real estate agent side."""
+"""Sign-in, sessions and CSRF for the real estate agent side, and rate limits on the routes that call the model."""
 import secrets
 import time
 from collections import defaultdict, deque
@@ -38,6 +38,32 @@ def login_allowed(ip: str) -> bool:
 
 def record_failed_login(ip: str) -> None:
     _fails[ip].append(time.monotonic())
+
+
+# --- rate limits on routes that call the language model (each call costs money and quota) ---
+# Kept in memory, so they count per server instance: with several Cloud Run instances
+# the effective limit is higher. Move them to Postgres or Redis before scaling out.
+class RateLimit:
+    """Sliding window: at most `limit` events per key in `window_s` seconds."""
+
+    def __init__(self, limit: int, window_s: int):
+        self.limit, self.window_s = limit, window_s
+        self._events: dict[str, deque] = defaultdict(deque)
+
+    def allow(self, key: str) -> bool:
+        """Record one event for key and say whether it is within the limit."""
+        q, now = self._events[key], time.monotonic()
+        while q and q[0] < now - self.window_s:
+            q.popleft()
+        if len(q) >= self.limit:
+            return False
+        q.append(now)
+        return True
+
+
+CHAT_PER_VISITOR = RateLimit(30, 10 * 60)   # one buyer typing: 30 messages per 10 minutes
+CHAT_PER_IP = RateLimit(120, 10 * 60)       # an office or mobile network shares one IP
+ADS_PER_AGENT = RateLimit(40, 24 * 3600)    # new listings and regenerations per agent per day
 
 
 # --- sessions (signed cookie via Starlette's SessionMiddleware) ---

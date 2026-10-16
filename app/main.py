@@ -298,6 +298,10 @@ async def chat(request: Request):
         raise HTTPException(400, "Send a message.")
     current = filters_from_form(body.get("filters") or {})
     vid, typed = visitor_id(request), history[-1]["content"]
+    ip = request.client.host if request.client else "unknown"
+    if not (security.CHAT_PER_VISITOR.allow(vid) and security.CHAT_PER_IP.allow(ip)):
+        return JSONResponse({"reply": "You are sending messages faster than we can answer. "
+                                      "Please wait a few minutes, or use the filters."}, status_code=429)
     recorder = CallRecorder()
 
     def run():
@@ -530,6 +534,9 @@ async def create_listing(request: Request, agent_id: str = Depends(security.requ
     if error:
         return render(request, "agent/new.html", 400, error=error, description=description,
                       max_images=config.MAX_IMAGES)
+    if not security.ADS_PER_AGENT.allow(agent_id):
+        return render(request, "agent/new.html", 429, description=description, max_images=config.MAX_IMAGES,
+                      error="You have reached today's limit for new ads. Please try again tomorrow.")
 
     recorder = CallRecorder()
 
@@ -742,6 +749,8 @@ async def publish(request_id: uuid.UUID, request: Request, agent_id: str = Depen
 async def regenerate(request_id: uuid.UUID, request: Request, agent_id: str = Depends(security.require_agent),
                      csrf: str = Form(None)):
     security.check_csrf(request, csrf)
+    if not security.ADS_PER_AGENT.allow(agent_id):
+        raise HTTPException(429, "You have reached today's limit for new drafts. Please try again tomorrow.")
     recorder = CallRecorder()
 
     def run():
