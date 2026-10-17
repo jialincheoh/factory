@@ -125,24 +125,25 @@
       return p;
     };
 
-    chatForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const text = input.value.trim();
-      if (!text) return;
-      input.value = "";
-      say("user", text);
-      history.push({ role: "user", content: text });
+    // One path for typed, spoken and photo searches. `request` is either a JSON body or a FormData
+    // for /api/chat/media; `shown` is what the buyer sees as their own message.
+    const send = async (request, shown) => {
+      const bubble = say("user", shown.text);
+      if (shown.image) { const img = document.createElement("img"); img.src = shown.image; img.alt = "Your photo"; bubble.appendChild(img); }
+      history.push({ role: "user", content: shown.sent });
       const pending = say("assistant pending", "Searching…");
-      const button = chatForm.querySelector("button");
+      const button = chatForm.querySelector("button[type=submit]");
       button.disabled = true;
       try {
-        const res = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: history, filters: filterForm ? formValues() : {} }),
-        });
+        const res = request instanceof FormData
+          ? await fetch("/api/chat/media", { method: "POST", headers: { "X-Requested-With": "fetch" }, body: request })
+          : await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request) });
         const data = await res.json();
         pending.remove();
+        if (data.heard !== undefined) {               // voice: show what was understood, and keep it in the history
+          if (data.heard) { bubble.textContent = "🎤 " + data.heard; history[history.length - 1].content = data.heard; }
+          else { history.pop(); say("assistant", data.reply); return; }
+        }
         say("assistant", data.reply || "Something went wrong.");
         if (res.ok) history.push({ role: "assistant", content: data.reply });
         else history.pop();
@@ -159,7 +160,103 @@
         button.disabled = false;
         input.focus();
       }
+    };
+    const currentFilters = () => (filterForm ? formValues() : {});
+
+    chatForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) { input.focus(); return; }
+      input.value = "";
+      send({ messages: history.concat([{ role: "user", content: text }]), filters: currentFilters() },
+           { text, sent: text });
     });
+
+    // ---- photo search: the photo is shrunk in the browser, so uploads from a phone camera stay small.
+    const photoInput = document.getElementById("chat-photo");
+    if (photoInput) {
+      photoInput.addEventListener("change", async () => {
+        const file = photoInput.files[0];
+        photoInput.value = "";
+        if (!file) return;
+        const caption = input.value.trim();
+        input.value = "";
+        let blob = file, preview;
+        try {
+          const bitmap = await createImageBitmap(file);
+          const scale = Math.min(1, 1280 / Math.max(bitmap.width, bitmap.height));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round(bitmap.width * scale); canvas.height = Math.round(bitmap.height * scale);
+          canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+          blob = await new Promise((ok) => canvas.toBlob(ok, "image/jpeg", 0.85));
+          preview = canvas.toDataURL("image/jpeg", 0.6);
+        } catch (err) { /* browser cannot decode it: send the original and let the server decide */ }
+        const sent = ("[photo] " + caption).trim();
+        const fd = new FormData();
+        fd.append("messages", JSON.stringify(history.concat([{ role: "user", content: caption }])));
+        fd.append("filters", JSON.stringify(currentFilters()));
+        fd.append("photo", blob, "photo.jpg");
+        send(fd, { text: caption || "Photo", sent, image: preview });
+      });
+    }
+
+    // ---- voice search: record 16 kHz mono PCM and wrap it as WAV, which every browser can produce
+    // without a codec and the model accepts as is.
+    const mic = document.getElementById("chat-mic");
+    const recordingHint = document.getElementById("chat-recording");
+    if (mic && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.AudioContext) {
+      mic.hidden = false;
+      let rec = null;
+      const MAX_SECONDS = 30;
+
+      const wavBlob = (chunks, sampleRate) => {
+        const length = chunks.reduce((n, c) => n + c.length, 0);
+        const buf = new ArrayBuffer(44 + length * 2), v = new DataView(buf);
+        const str = (o, t) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+        str(0, "RIFF"); v.setUint32(4, 36 + length * 2, true); str(8, "WAVE"); str(12, "fmt ");
+        v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+        v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true); v.setUint16(32, 2, true);
+        v.setUint16(34, 16, true); str(36, "data"); v.setUint32(40, length * 2, true);
+        let o = 44;
+        for (const c of chunks) for (let i = 0; i < c.length; i++, o += 2) {
+          const x = Math.max(-1, Math.min(1, c[i])); v.setInt16(o, x < 0 ? x * 0x8000 : x * 0x7fff, true);
+        }
+        return new Blob([buf], { type: "audio/wav" });
+      };
+
+      const stop = () => {
+        if (!rec) return;
+        const { stream, ctx, chunks, timer } = rec;
+        rec = null;
+        clearTimeout(timer);
+        stream.getTracks().forEach((t) => t.stop());
+        const rate = ctx.sampleRate;
+        ctx.close();
+        mic.classList.remove("recording"); recordingHint.hidden = true;
+        const seconds = chunks.reduce((n, c) => n + c.length, 0) / rate;
+        if (seconds < 0.5) { say("assistant", "That was too short. Hold on a moment after tapping the microphone, then speak."); return; }
+        const fd = new FormData();
+        fd.append("messages", JSON.stringify(history.concat([{ role: "user", content: "[voice message]" }])));
+        fd.append("filters", JSON.stringify(currentFilters()));
+        fd.append("audio", wavBlob(chunks, rate), "voice.wav");
+        send(fd, { text: "🎤 Voice message (" + Math.round(seconds) + " s)", sent: "[voice message]" });
+      };
+
+      mic.addEventListener("click", async () => {
+        if (rec) { stop(); return; }
+        let stream;
+        try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+        catch (err) { say("assistant", "Microphone access was refused. You can type your search instead."); return; }
+        const ctx = new AudioContext({ sampleRate: 16000 });
+        const source = ctx.createMediaStreamSource(stream);
+        const proc = ctx.createScriptProcessor(4096, 1, 1);
+        const chunks = [];
+        proc.onaudioprocess = (e) => { if (rec) chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
+        source.connect(proc); proc.connect(ctx.destination);
+        rec = { stream, ctx, chunks, timer: setTimeout(stop, MAX_SECONDS * 1000) };
+        mic.classList.add("recording"); recordingHint.hidden = false;
+      });
+    }
 
     reset.addEventListener("click", () => { window.location.href = "/"; });
   }

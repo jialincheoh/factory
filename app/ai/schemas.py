@@ -122,6 +122,13 @@ class ChatResult:
     declined: Optional[str] = None      # reason, when the request was outside what the site lists
 
 
+class Transcript(BaseModel):
+    """What a buyer said in a voice message."""
+    transcript: str = Field(description="What the speaker said, word for word, in the language spoken; empty if "
+                                        "there is no speech")
+    language: str = Field(description="Language spoken, e.g. 'English', 'Malay', 'Chinese', or 'mixed'")
+
+
 OutOfScopeReason = Literal["residential", "shop_or_office", "land_only", "unrelated"]
 
 

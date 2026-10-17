@@ -8,10 +8,18 @@
   <p class="lede">{{ intro or "Describe the space your business needs, from power supply and ceiling height to land size and container access, and see only the properties that fit." }}</p>
   <div class="chat" aria-label="Search assistant">
     <form id="chat-form" class="chat-form">
-      <input id="chat-input" name="q" autocomplete="off" maxlength="1000" placeholder="e.g. Factory in Shah Alam with 400 amp power and container access" required aria-label="Describe what you need">
+      <input id="chat-input" name="q" autocomplete="off" maxlength="1000" placeholder="e.g. Factory in Shah Alam with 400 amp power and container access" aria-label="Describe what you need">
+      <button type="button" class="chat-tool" id="chat-mic" aria-label="Search by voice" title="Search by voice" hidden>
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 15a4 4 0 0 0 4-4V6a4 4 0 0 0-8 0v5a4 4 0 0 0 4 4zm6-4a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.93V22h2v-3.07A8 8 0 0 0 20 11h-2z"/></svg>
+      </button>
+      <label class="chat-tool" id="chat-photo-label" aria-label="Search with a photo" title="Search with a photo">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M9 3 7.17 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.17L15 3H9zm3 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>
+        <input type="file" id="chat-photo" accept="image/jpeg,image/png,image/webp" capture="environment" hidden>
+      </label>
       <button type="submit">Search</button>
     </form>
-    <p class="hint">Or in Malay: “kilang di Johor atas tanah 5 ekar”. Refine as you go: “freehold only”. Searches are read by Google's Gemini AI and stored to improve search (<a href="/privacy">privacy</a>).</p>
+    <p class="hint">Or in Malay: “kilang di Johor atas tanah 5 ekar”. Refine as you go: “freehold only”. You can also speak, or send a photo of the kind of building you want. Searches are read by Google's Gemini AI and stored to improve search; recordings and photos are not kept (<a href="/privacy">privacy</a>).</p>
+    <p class="hint" id="chat-recording" hidden>Listening… tap the microphone again to stop (30 s max).</p>
     <div id="chat-log" class="chat-log" aria-live="polite"></div>
     <button id="chat-reset" class="linklike" type="button" hidden>Start over</button>
   </div>

@@ -202,8 +202,14 @@ class OfflineAssistant:
         return AdResult(analysis, f"[offline rules, {len(images)} photo(s)]\n{description}", self.model_name,
                         [{"checked": False, "unsupported_claims": [], "earlier_versions": []} for _ in drafts])
 
+    def transcribe(self, audio: bytes, mime_type: str, recorder=None) -> str:
+        """No speech recognition offline: the website tells the buyer to type instead."""
+        _record(recorder, "transcribe", time.monotonic())
+        return ""
+
     def search_chat(self, history: list[dict], run_search: Callable[[SearchFilters], list[dict]],
-                    current: SearchFilters | None = None, recorder=None) -> ChatResult:
+                    current: SearchFilters | None = None, recorder=None, image=None) -> ChatResult:
+        # A photo cannot be read offline; the words sent with it are still searched.
         started = time.monotonic()
         latest = history[-1]["content"].lower() if history else ""
         if not _types(latest):

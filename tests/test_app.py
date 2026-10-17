@@ -389,7 +389,7 @@ def test_model_calls_logged_and_contact_details_masked(agent):
     q, sid = db_one("SELECT query_text, search_id FROM search_events ORDER BY search_id DESC LIMIT 1")
     assert q == "warehouse in Senai, my number [phone]"
     assert db_one("SELECT job, prompt_version FROM model_calls WHERE search_id = %s", [sid]) == (
-        "search_chat", "search-v2-scoped")
+        "search_chat", llm.SEARCH_PROMPT_VERSION)
 
 
 def test_out_of_scope_search_is_declined():
@@ -409,7 +409,7 @@ def test_monitor_report_runs():
         assert isinstance(alerts, list)
         # A prompt edited without a new version is caught.
         conn.execute("INSERT INTO model_calls (job, step, model, is_fallback, ok, prompt_version, prompt_hash, settings) "
-                     "VALUES ('search_chat', 'search_chat', 'x:y', false, true, 'search-v2-scoped', 'edited', '{}')")
+                     "VALUES ('search_chat', 'search_chat', 'x:y', false, true, %s, 'edited', '{}')", [llm.SEARCH_PROMPT_VERSION])
         assert any("different prompts" in a for a in monitor.report(conn, 7))
         conn.rollback()
 
@@ -533,3 +533,75 @@ def test_brochure_problems_are_explained(agent):
     assert r.status_code == 400 and "at least 20 characters" in r.text
     r = client.post("/agent/new", data={"description": "A perfectly fine description of a factory.", "csrf": token})
     assert r.status_code == 400 and "at least one photo" in r.text
+
+
+def wav_bytes(seconds: float = 1.0) -> bytes:
+    import struct
+    n = int(16000 * seconds)
+    return (b"RIFF" + struct.pack("<I", 36 + n * 2) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, 1, 1, 16000, 32000, 2, 16)
+            + b"data" + struct.pack("<I", n * 2) + b"\x00\x00" * n)
+
+
+MEDIA_HEADERS = {"X-Requested-With": "fetch"}
+
+
+def test_voice_search_is_transcribed_then_searched(monkeypatch):
+    from app.ai import get_assistant
+    heard = {}
+    def fake_transcribe(self, audio, mime, recorder=None):
+        heard["mime"], heard["bytes"] = mime, len(audio)
+        return "gudang untuk sewa di Port Klang, call me at 012-345 6789"
+    monkeypatch.setattr(type(get_assistant()), "transcribe", fake_transcribe)
+    client = TestClient(app)
+    r = client.post("/api/chat/media", headers=MEDIA_HEADERS,
+                    data={"messages": '[{"role":"user","content":"[voice message]"}]', "filters": "{}"},
+                    files=[("audio", ("voice.wav", wav_bytes(), "audio/wav"))])
+    assert r.status_code == 200, r.text
+    assert heard == {"mime": "audio/wav", "bytes": len(wav_bytes())}
+    body = r.json()
+    assert body["heard"] == "gudang untuk sewa di Port Klang, call me at [phone]"  # shown to the buyer, masked
+    assert "count" in body and body["form"]["deal"] == "rent" and body["form"]["type"] == "warehouse"
+    method, query = db_one("SELECT method, query_text FROM search_events ORDER BY search_id DESC LIMIT 1")
+    assert method == "voice" and query == "gudang untuk sewa di Port Klang, call me at [phone]"
+
+
+def test_voice_with_no_words_asks_to_type():
+    r = TestClient(app).post("/api/chat/media", headers=MEDIA_HEADERS,
+                             data={"messages": '[{"role":"user","content":"[voice message]"}]'},
+                             files=[("audio", ("voice.wav", wav_bytes(), "audio/wav"))])
+    assert r.status_code == 200 and r.json()["heard"] == "" and "type" in r.json()["reply"]  # offline stand-in cannot hear
+    r = TestClient(app).post("/api/chat/media", headers=MEDIA_HEADERS,
+                             data={"messages": '[{"role":"user","content":"x"}]'},
+                             files=[("audio", ("voice.mid", b"MThd", "audio/midi"))])
+    assert r.status_code == 400 and "format" in r.json()["detail"]
+
+
+def test_photo_search_sends_the_photo_with_the_words(monkeypatch):
+    from app.ai import get_assistant
+    seen = {}
+    real = type(get_assistant()).search_chat
+    def spy(self, history, run_search, current=None, recorder=None, image=None):
+        seen["image"] = image; seen["last"] = history[-1]["content"]
+        return real(self, history, run_search, current, recorder, image=image)
+    monkeypatch.setattr(type(get_assistant()), "search_chat", spy)
+    client = TestClient(app)
+    r = client.post("/api/chat/media", headers=MEDIA_HEADERS,
+                    data={"messages": '[{"role":"user","content":"factory like this in Johor"}]'},
+                    files=[("photo", ("p.jpg", jpeg_with_gps(), "image/jpeg"))])
+    assert r.status_code == 200, r.text
+    assert seen["last"] == "[photo] factory like this in Johor" and seen["image"][1] == "image/jpeg"
+    assert not Image.open(io.BytesIO(seen["image"][0])).getexif()  # GPS stripped before the model sees it
+    assert "count" in r.json()
+    method, query = db_one("SELECT method, query_text FROM search_events ORDER BY search_id DESC LIMIT 1")
+    assert method == "image" and query == "[photo] factory like this in Johor"
+
+
+def test_media_endpoint_refuses_plain_forms_and_junk():
+    client = TestClient(app)
+    r = client.post("/api/chat/media", data={"messages": "[]"}, files=[("photo", ("p.jpg", jpeg_with_gps(), "image/jpeg"))])
+    assert r.status_code == 415  # no X-Requested-With: a cross-site HTML form
+    r = client.post("/api/chat/media", headers=MEDIA_HEADERS, data={"messages": '[{"role":"user","content":"hi"}]'})
+    assert r.status_code == 400 and "voice message or a photo" in r.json()["detail"]
+    r = client.post("/api/chat/media", headers=MEDIA_HEADERS, data={"messages": '[{"role":"user","content":"hi"}]'},
+                    files=[("photo", ("p.jpg", b"not an image", "image/jpeg"))])
+    assert r.status_code == 400 and "readable image" in r.json()["detail"]

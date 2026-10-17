@@ -72,14 +72,14 @@ SELECT count(*) AS typed,
        avg((interpreter = 'error')::int) AS error_rate,
        avg((declined IS NOT NULL)::int) AS declined_rate,
        avg((result_count = 0)::int) AS zero_result_rate
-FROM search_events WHERE method = 'text' AND occurred_at > now() - make_interval(days => %(days)s)"""
+FROM search_events WHERE method IN ('text', 'voice', 'image') AND occurred_at > now() - make_interval(days => %(days)s)"""
 
-# Task level: did a visit that typed a search go on to open a listing or reveal a phone number,
+# Task level: did a visit that typed, spoke or photographed a search go on to open a listing or reveal a phone number,
 # and how many typed messages did it take to reach the first opened listing?
 SEARCH_TASKS = """
 WITH visits AS (
   SELECT visitor_id, min(occurred_at) AS first_typed FROM search_events
-  WHERE method = 'text' AND occurred_at > now() - make_interval(days => %(days)s) GROUP BY visitor_id),
+  WHERE method IN ('text', 'voice', 'image') AND occurred_at > now() - make_interval(days => %(days)s) GROUP BY visitor_id),
 outcome AS (
   SELECT v.visitor_id,
          min(e.occurred_at) FILTER (WHERE e.event_type = 'click') AS first_open,
@@ -90,7 +90,7 @@ SELECT count(*) AS visits,
        avg((first_open IS NOT NULL)::int) AS opened_rate,
        avg(coalesce(revealed, false)::int) AS revealed_rate,
        percentile_cont(0.5) WITHIN GROUP (ORDER BY (
-         SELECT count(*) FROM search_events s WHERE s.visitor_id = o.visitor_id AND s.method = 'text'
+         SELECT count(*) FROM search_events s WHERE s.visitor_id = o.visitor_id AND s.method IN ('text', 'voice', 'image')
            AND s.occurred_at <= o.first_open))
          FILTER (WHERE first_open IS NOT NULL) AS median_messages_to_open
 FROM outcome o"""

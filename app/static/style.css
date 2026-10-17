@@ -85,6 +85,12 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--b
 .chat-form input { border: 0; background: transparent; font-size: 1.02rem; padding: 18px 20px; }
 .chat-form input:focus { box-shadow: none; }
 .chat-form button[type=submit] { border-radius: 0 var(--radius) var(--radius) 0; padding: 0 30px; }
+.chat-tool { display: inline-flex; align-items: center; justify-content: center; width: 46px; border: 0; background: transparent;
+  color: var(--muted); cursor: pointer; flex: 0 0 auto; }
+.chat-tool:hover, .chat-tool:focus-visible { color: var(--text); }
+.chat-tool.recording { color: #c0392b; animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+.msg.user img { display: block; max-width: 160px; max-height: 120px; border-radius: 4px; margin-top: 6px; }
 .hint { color: var(--muted); font-size: .85rem; margin-top: 12px; text-align: center; }
 .chat-log { max-height: 34vh; overflow-y: auto; display: grid; gap: 10px; margin-top: 22px; }
 .chat-log:empty { display: none; }

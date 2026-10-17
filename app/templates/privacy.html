@@ -25,6 +25,7 @@
   <li>You do not need an account, and we do not ask for your name or contact details.</li>
   <li>We count how often each {% if self_signup %}ad{% else %}listing{% endif %} is shown, opened and has its phone number revealed. These counts are not linked to you.</li>
   <li>What you type into the search box is sent to Google's Gemini AI service so it can be turned into search filters. Phone numbers, email addresses and IC numbers in what you type are replaced with a placeholder before it is sent{% if search_logging %} or stored{% endif %}.</li>
+  <li>If you search by voice, the recording is sent to Google's Gemini AI service to be written down, and then handled like typed text; the recording itself is not kept. If you search with a photo, the photo is sent to Gemini to read what it shows, after location data (GPS) and other hidden information are removed; the photo is not kept{% if search_logging %}, only the filters it led to{% endif %}.</li>
   {% if search_logging %}<li>We store each search: the words you typed, the filters it became, how many results it found and the time. We also record how you searched (typing, using the filters{% if self_signup %}, removing a filter{% endif %} or browsing a category). Please do not type personal details, such as your name or phone number, into the search box.</li>
   <li>A random visitor ID is kept in your session cookie and stored with your searches and with the {% if self_signup %}ads{% else %}listings{% endif %} you open or whose phone number you reveal, so we can see which searches lead to enquiries. It is not linked to any account, name or contact details, and a new one is made when the cookie expires (after {{ cookie_lifetime }}).</li>{% else %}<li>We do not store your search text.</li>{% endif %}
 </ul>
@@ -45,7 +46,7 @@
 <h2>Who we share it with</h2>
 <ul>
   <li><strong>Buyers</strong> see the {% if self_signup %}seller's{% else %}agent's{% endif %} name, and the phone number when they ask for it on a {% if self_signup %}ad{% else %}listing{% endif %} page.</li>
-  <li><strong>Google</strong> (Gemini AI) processes {% if self_signup %}sellers'{% else %}agents'{% endif %} descriptions and photos, and the text of searches, to provide the AI features. Google's servers may be outside Malaysia.</li>
+  <li><strong>Google</strong> (Gemini AI) processes {% if self_signup %}sellers'{% else %}agents'{% endif %} descriptions and photos, and the text, voice recordings and photos of searches, to provide the AI features. Google's servers may be outside Malaysia.</li>
   {% if has_map %}<li><strong>OpenStreetMap</strong> provides the maps. Your browser loads map images directly from OpenStreetMap's servers, which therefore see your IP address.</li>{% endif %}
   <li>Our <strong>hosting provider</strong>, which stores the site and its data, possibly outside Malaysia.</li>
   <li>Authorities, when the law requires it.</li>

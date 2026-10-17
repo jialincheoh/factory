@@ -30,11 +30,11 @@ from langchain_core.tools import StructuredTool
 
 from . import calllog, draft_graph, pii
 from .schemas import (AdDraft, AdResult, ChatResult, DraftCheck, FixedDrafts, ListingAnalysis, OutOfScope,
-                      SearchFilters)
+                      SearchFilters, Transcript)
 
 # Bump when a prompt below changes; tests/test_ai.py pins each version to its prompt fingerprint.
 PROMPT_VERSION = "ads-v5-covers"
-SEARCH_PROMPT_VERSION = "search-v2-scoped"
+SEARCH_PROMPT_VERSION = "search-v3-media"  # photo paragraph + transcription prompt
 MODEL_TIMEOUT_S = 60  # per model call; reading several photos can take a while
 
 WRITE_ADS_SYSTEM = """You help a human real estate agent in Malaysia turn photos and a short note into a property ad. The site lists factories and warehouses only, sold or rented to business owners and investors. If the description is for something else (land without a building, a shop or shop office, a house), set property_type to 'other' and add a 'warning' mismatch saying so.
@@ -60,6 +60,8 @@ Call the search_listings tool whenever the buyer states or changes what they are
 The buyer may also have set the filter bar on the page; its current settings are given below. Treat them as already requested, and change them only when the buyer asks for something different.
 
 After searching, reply in one to three short sentences: how many listings matched and, if none did, which requirement to relax. Do not list every result; the page shows them as cards and on a map. Never invent listings or details that the tool did not return. Prices are in {currency}; rents are per month.
+
+The buyer may attach a photo (of a factory or warehouse they like, a brochure, or a signboard). Read what it shows, such as the building type, loading bays, a crane, container access, a stated size or price, or a location name, and search with those requirements together with anything the buyer wrote. Say in one sentence what you took from the photo. If the photo shows nothing useful, say so and ask what they need.
 
 Contact details the buyer typed have been replaced with placeholders such as [phone]; ignore them.
 
@@ -89,6 +91,13 @@ def prompt_fingerprint(*prompts: str) -> str:
 
 def _image_block(data: bytes, mime_type: str) -> dict:
     return {"type": "image", "base64": base64.b64encode(data).decode(), "mime_type": mime_type}
+
+
+def _audio_block(data: bytes, mime_type: str) -> dict:
+    return {"type": "audio", "base64": base64.b64encode(data).decode(), "mime_type": mime_type}
+
+
+TRANSCRIBE_SYSTEM = """Transcribe the buyer's voice message for a Malaysian factory and warehouse property portal. Write exactly what was said, in the language spoken (English, Malay, Chinese or a mix), with numbers as digits and units as said (acres, sqft, amps, kVA, RM). Do not answer, summarise or translate. If there is no speech, return an empty transcript."""
 
 
 def _facts(analysis: ListingAnalysis) -> str:
@@ -229,10 +238,24 @@ class LLMAssistant:
         return AdResult(analysis=state["analysis"], prompt_text=prompt_text, model_name="+".join(models),
                         checks=checks)
 
+    def transcribe(self, audio: bytes, mime_type: str, recorder: calllog.CallRecorder | None = None) -> str:
+        """Text of a buyer's voice message, so it can be masked, logged and searched like typed text."""
+        token = calllog.current.set(recorder or calllog.CallRecorder())
+        try:
+            result, _ = self._structured(
+                Transcript, [SystemMessage(TRANSCRIBE_SYSTEM),
+                             HumanMessage(content=[{"type": "text", "text": "Voice message:"},
+                                                   _audio_block(audio, mime_type)])], "transcribe")
+        finally:
+            calllog.current.reset(token)
+        return result.transcript.strip()
+
     def search_chat(self, history: list[dict], run_search: Callable[[SearchFilters], list[dict]],
                     current: SearchFilters | None = None,
-                    recorder: calllog.CallRecorder | None = None) -> ChatResult:
-        """history: [{'role': 'user'|'assistant', 'content': str}, ...], newest last."""
+                    recorder: calllog.CallRecorder | None = None,
+                    image: tuple[bytes, str] | None = None) -> ChatResult:
+        """history: [{'role': 'user'|'assistant', 'content': str}, ...], newest last.
+        image: (bytes, mime type) attached to the newest buyer message, if they sent a photo."""
         last: dict = {}
 
         def decline_request(reason: str) -> str:
@@ -272,6 +295,9 @@ class LLMAssistant:
             system_prompt=SEARCH_SYSTEM.format(currency=self.currency, current_filters=settings))
 
         messages = [(HumanMessage if t["role"] == "user" else AIMessage)(pii.mask(t["content"])) for t in history]
+        if image is not None and messages and isinstance(messages[-1], HumanMessage):
+            messages[-1] = HumanMessage(content=[{"type": "text", "text": messages[-1].text or "Buyer's photo:"},
+                                                 _image_block(*image)])
         state = search_loop.invoke({"messages": messages},
                                    config=self._run_config("search_chat", recorder or calllog.CallRecorder(),
                                                            tag=SEARCH_PROMPT_VERSION))
@@ -288,7 +314,7 @@ class LLMAssistant:
 
 
 AD_PROMPT_FINGERPRINT = prompt_fingerprint(WRITE_ADS_SYSTEM, CHECK_SYSTEM, REWRITE_SYSTEM)
-SEARCH_PROMPT_FINGERPRINT = prompt_fingerprint(SEARCH_SYSTEM, *DECLINE_REPLIES.values())
+SEARCH_PROMPT_FINGERPRINT = prompt_fingerprint(SEARCH_SYSTEM, TRANSCRIBE_SYSTEM, *DECLINE_REPLIES.values())
 
 
 def _user_text(description: str, images: list) -> str:

@@ -1,0 +1,43 @@
+# Render Blueprint: free web service + free Postgres, for a temporary public URL.
+# Photos are stored on the container's disk and are lost on each restart (free tier has no persistent disk).
+databases:
+  - name: factory-db
+    plan: free
+    databaseName: listing_ads
+    user: listing
+
+services:
+  - type: web
+    name: factory
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    preDeployCommand: python -m scripts.migrate
+    healthCheckPath: /robots.txt
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: factory-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: SECURE_COOKIES
+        value: "1"
+      - key: SITE_NAME
+        value: Factory
+      - key: SITE_URL
+        value: https://factory.onrender.com
+      - key: CURRENCY
+        value: RM
+      - key: CURRENCY_CODE
+        value: MYR
+      - key: UPLOAD_DIR
+        value: /tmp/uploads
+      - key: SEARCH_LOGGING
+        value: "1"
+      # GOOGLE_API_KEY is set on the service, never committed.
+      - key: LLM_MODEL
+        value: google_genai:gemini-3.5-flash
+      - key: GOOGLE_API_KEY
+        sync: false
