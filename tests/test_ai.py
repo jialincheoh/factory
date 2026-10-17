@@ -99,15 +99,18 @@ def test_failed_check_leaves_drafts_unchecked():
 def test_progress_messages_while_streaming():
     def analyse(description, images, n):
         return analysis_with("200A power.", "400A power."), "m:a"
-    graph = draft_graph.build(analyse, lambda a, i: (([] if i == 0 else ["400A"]), "m"),
+    graph = draft_graph.build(analyse, lambda a, i: (([] if i == 0 else ["400A"]), "m"),  # draft 2 never passes
                               lambda a, i, c: (AdDraft(headline="Fixed", body="200A power."), "m"))
-    steps = [draft_graph.describe_step(node, update)
+    seen = {}
+    steps = [draft_graph.describe_step(node, update, seen)
              for chunk in graph.stream({"description": "x", "images": [], "n_drafts": 2}, stream_mode="updates")
              for node, update in chunk.items()]
     steps = [s for s in steps if s]
     assert steps[0].startswith("Read the description") and "wrote 2 drafts" in steps[0]
-    assert "Draft 1: every claim is supported." in steps and any("Draft 2: 1 claim(s)" in s for s in steps)
+    assert "Draft 1: every claim is supported." in steps
+    assert "Draft 2: 1 claim(s) not supported by the facts, sending it to the editor." in steps
     assert "Draft 2: edited." in steps
+    assert steps[-1] == "Draft 2: 1 claim(s) still not supported; it will be shown to you with a warning."
 
 
 class ToolFakeModel(GenericFakeChatModel):

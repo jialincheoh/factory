@@ -122,13 +122,21 @@ def draft_checks(state: DraftState) -> list[dict]:
             for i in range(len(state["analysis"].drafts))]
 
 
-def describe_step(node: str, update: dict) -> str | None:
-    """One line for the agent's progress view, from a graph update (used when streaming)."""
+def describe_step(node: str, update: dict, checks_so_far: dict[int, int] | None = None,
+                  max_rewrites: int = MAX_REWRITES) -> str | None:
+    """One line for the agent's progress view, from a graph update (used when streaming).
+    checks_so_far counts earlier checks per draft, so a draft that still fails after the last
+    allowed rewrite is reported as flagged, not as going back to the editor."""
     if node == "analyse":
         a = update["analysis"]
         return f"Read the description and photos, filled the property card and wrote {len(a.drafts)} drafts."
     if node == "check_one":
         (i, claims), = update["verdicts"].items()
+        seen = checks_so_far if checks_so_far is not None else {}
+        final_round = seen.get(i, 0) >= max_rewrites
+        seen[i] = seen.get(i, 0) + 1
+        if claims and final_round:
+            return f"Draft {i + 1}: {len(claims)} claim(s) still not supported; it will be shown to you with a warning."
         if claims is None:
             return f"Draft {i + 1}: the fact check could not run; please review it closely."
         return (f"Draft {i + 1}: every claim is supported." if not claims

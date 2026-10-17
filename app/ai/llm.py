@@ -245,7 +245,7 @@ class LLMAssistant:
         description = pii.mask(description)
         recorder = recorder or calllog.CallRecorder()
         token = calllog.current.set(recorder)
-        state = None
+        state, checks_so_far = None, {}
         try:
             async for mode, chunk in self._draft_graph.astream(
                     {"description": description, "images": images, "n_drafts": n_drafts},
@@ -255,7 +255,7 @@ class LLMAssistant:
                     state = chunk
                     continue
                 for node, update in chunk.items():
-                    message = draft_graph.describe_step(node, update or {})
+                    message = draft_graph.describe_step(node, update or {}, checks_so_far)
                     if message:
                         yield "step", message
         finally:
