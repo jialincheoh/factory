@@ -476,3 +476,60 @@ def test_ad_writing_is_rate_limited_per_agent(agent, monkeypatch):
     r = client.post("/agent/new", data={"description": "Factory for sale in Senai with 400A power.", "csrf": token},
                     files=[("photos", ("a.jpg", jpeg_with_gps(), "image/jpeg"))])
     assert r.status_code == 429 and "limit for new ads" in r.text
+
+
+def brochure_pdf(text: str, pictures: int = 2) -> bytes:
+    import pymupdf
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((40, 60), text, fontsize=11)
+    for i in range(pictures):
+        buf = io.BytesIO(); Image.new("RGB", (900, 600), (20 * i, 110, 180)).save(buf, "PNG")
+        page.insert_image(pymupdf.Rect(40, 90 + 90 * i, 160, 170 + 90 * i), stream=buf.getvalue())
+    return doc.tobytes()
+
+
+def test_brochure_alone_is_enough(agent):
+    client = TestClient(app)
+    token = sign_in(client, agent)
+    pdf = brochure_pdf("Kilang dijual di Senai. 1 ekar, 20,000 sqft, 300A power. Harga RM 6 juta. Call 012-345 6789")
+    r = client.post("/agent/new", data={"description": "", "csrf": token},
+                    files=[("brochure_pdf", ("brochure.pdf", pdf, "application/pdf"))], follow_redirects=False)
+    assert r.status_code == 303, r.text
+    request_id = r.headers["location"].rsplit("/", 1)[1]
+    desc, n_photos = db_one(
+        "SELECT l.description_original, (SELECT count(*) FROM listing_images i WHERE i.listing_id = l.listing_id) "
+        "FROM listings l JOIN generation_requests g USING (listing_id) WHERE g.request_id = %s", [request_id])
+    assert "Kilang dijual di Senai" in desc and n_photos == 2
+    drafts = db_one("SELECT string_agg(headline || ' ' || ad_text, ' ') FROM candidates WHERE request_id = %s",
+                    [request_id])[0]
+    assert "012-345 6789" not in drafts  # masked before the model saw it
+
+
+def test_brochure_text_joins_the_description_and_photos_fill_up(agent):
+    client = TestClient(app)
+    token = sign_in(client, agent)
+    pdf = brochure_pdf("Brochure says: 2 loading bays and a guardhouse.", pictures=config.MAX_IMAGES)
+    r = client.post("/agent/new", data={"description": "Warehouse for rent in Port Klang, 50,000 sqft.", "csrf": token},
+                    files=[("photos", ("a.jpg", jpeg_with_gps(), "image/jpeg")),
+                           ("brochure_pdf", ("brochure.pdf", pdf, "application/pdf"))], follow_redirects=False)
+    assert r.status_code == 303, r.text
+    request_id = r.headers["location"].rsplit("/", 1)[1]
+    desc, n_photos = db_one(
+        "SELECT l.description_original, (SELECT count(*) FROM listing_images i WHERE i.listing_id = l.listing_id) "
+        "FROM listings l JOIN generation_requests g USING (listing_id) WHERE g.request_id = %s", [request_id])
+    assert desc.startswith("Warehouse for rent in Port Klang") and "[From the brochure]" in desc
+    assert n_photos == config.MAX_IMAGES  # the agent's photo first, then brochure pictures up to the cap
+
+
+def test_brochure_problems_are_explained(agent):
+    client = TestClient(app)
+    token = sign_in(client, agent)
+    r = client.post("/agent/new", data={"description": "", "csrf": token},
+                    files=[("brochure_pdf", ("b.pdf", b"%PDF-1.4 nonsense", "application/pdf"))])
+    assert r.status_code == 400 and "not a readable PDF" in r.text
+    r = client.post("/agent/new", data={"description": "", "csrf": token},
+                    files=[("brochure_pdf", ("b.pdf", brochure_pdf("Short", pictures=1), "application/pdf"))])
+    assert r.status_code == 400 and "at least 20 characters" in r.text
+    r = client.post("/agent/new", data={"description": "A perfectly fine description of a factory.", "csrf": token})
+    assert r.status_code == 400 and "at least one photo" in r.text

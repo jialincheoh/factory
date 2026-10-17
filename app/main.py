@@ -15,7 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import config, db, geo, images, security, seo
+from . import brochure, config, db, geo, images, security, seo
 from .ai import get_assistant, pii
 from .ai.calllog import CallRecorder, emit
 from .ai.llm import AD_PROMPT_FINGERPRINT, PROMPT_VERSION, SEARCH_PROMPT_FINGERPRINT, SEARCH_PROMPT_VERSION
@@ -514,23 +514,42 @@ def _create_request(conn, agent_id, listing_id, description: str, photos: list[b
 
 @app.post("/agent/new")
 async def create_listing(request: Request, agent_id: str = Depends(security.require_agent),
-                         description: str = Form(...), photos: list[UploadFile] = File(...),
-                         csrf: str = Form(None)):
+                         description: str = Form(""), photos: list[UploadFile] = File([]),
+                         brochure_pdf: UploadFile | None = File(None), csrf: str = Form(None)):
     security.check_csrf(request, csrf)
     description = description.strip()
     error = None
-    if not 20 <= len(description) <= 1500:
-        error = "Write two or three sentences about the property (20 to 1,500 characters)."
+    if len(description) > 1500:
+        error = "Keep your own description under 1,500 characters; put the rest in a brochure PDF."
     photos = [p for p in photos if p.filename]
-    if not error and not 1 <= len(photos) <= config.MAX_IMAGES:
-        error = f"Upload between 1 and {config.MAX_IMAGES} photos."
+    if not error and len(photos) > config.MAX_IMAGES:
+        error = f"Upload at most {config.MAX_IMAGES} photos."
+
+    # Brochure: its text joins the description (and is masked with it); its pictures fill the
+    # remaining photo slots after the agent's own photos.
+    brochure_text, brochure_images = "", []
+    if not error and brochure_pdf is not None and brochure_pdf.filename:
+        try:
+            brochure_text, brochure_images = brochure.extract(
+                await brochure_pdf.read(brochure.MAX_BYTES + 1), max_images=config.MAX_IMAGES - len(photos))
+        except brochure.BrochureError as exc:
+            error = str(exc)
+    if not error and brochure_text:
+        description = f"{description}\n\n[From the brochure]\n{brochure_text}" if description else brochure_text
+    if not error and len(description) < 20:
+        error = ("Write two or three sentences about the property (at least 20 characters), "
+                 "or upload a brochure PDF that contains text.")
     processed = []
     if not error:
         try:
             for p in photos:
                 processed.append(images.process_upload(await p.read(config.MAX_IMAGE_BYTES + 1)))
+            for data in brochure_images:
+                processed.append(images.process_upload(data))
         except images.ImageError as exc:
             error = str(exc)
+    if not error and not processed:
+        error = "Add at least one photo, or a brochure PDF with pictures in it."
     if error:
         return render(request, "agent/new.html", 400, error=error, description=description,
                       max_images=config.MAX_IMAGES)

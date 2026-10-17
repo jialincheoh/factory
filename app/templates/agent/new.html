@@ -2,16 +2,20 @@
 {% block content %}
 <div class="narrow">
   <h1>New listing</h1>
-  <p class="muted">Upload photos and write two or three sentences in any language. The assistant checks the photos against your description, writes the ad in English, and fills the property card. You review everything before it goes live.</p>
+  <p class="muted">Upload photos and write two or three sentences in any language, or upload the brochure PDF and let the assistant read it. The assistant checks the photos against the description, writes the ad in English, and fills the property card. You review everything before it goes live.</p>
   {% if error %}<p class="error">{{ error }}</p>{% endif %}
   <form method="post" action="/agent/new" enctype="multipart/form-data" class="stack" id="new-listing">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label>Photos (1 to {{ max_images }}, JPEG/PNG/WebP)
-      <input type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple required id="photo-input">
+    <label>Photos (up to {{ max_images }}, JPEG/PNG/WebP)
+      <input type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple id="photo-input">
     </label>
     <div id="photo-preview" class="thumbs"></div>
+    <label>Brochure PDF (optional, under 20 MB)
+      <input type="file" name="brochure_pdf" accept="application/pdf" id="brochure-input">
+      <span class="muted small">Its text is added to your description and its pictures fill the remaining photo slots. Phone numbers and emails in it are masked before anything is sent to the AI.</span>
+    </label>
     <label>Description
-      <textarea name="description" rows="5" minlength="20" maxlength="1500" required
+      <textarea name="description" rows="5" maxlength="1500"
         placeholder="e.g. Kilang dijual di Shah Alam, 2 ekar, 35,000 sqft built-up, 400A, ceiling 30 kaki, pegangan bebas, akses kontena. Harga RM 18 juta.">{{ description or '' }}</textarea>
     </label>
     <button class="button" type="submit" id="generate-btn">Generate ad drafts</button>

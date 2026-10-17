@@ -16,7 +16,7 @@
 <h3>{% if self_signup %}If you sell on {{ SITE_NAME }}{% else %}If you are a real estate agent listing on {{ SITE_NAME }}{% endif %}</h3>
 <ul>
   <li>Your name, email address and phone number, and your password, which we store only in scrambled (hashed) form.</li>
-  <li>What you post: your description, the photos you upload and the details of the {% if self_signup %}item{% else %}property{% endif %}. We remove location data (GPS) and other hidden information from photos when you upload them.{% if ai_drafts %} Phone numbers, email addresses and IC numbers in your description are replaced with a placeholder before it is sent to the AI service.{% endif %}</li>
+  <li>What you post: your description, the photos and brochure PDFs you upload and the details of the {% if self_signup %}item{% else %}property{% endif %}. We remove location data (GPS) and other hidden information from photos when you upload them.{% if ai_drafts %} Phone numbers, email addresses and IC numbers in your description are replaced with a placeholder before it is sent to the AI service.{% endif %}</li>
   {% if ai_drafts %}<li>The ad drafts our AI writes for you, which draft you keep, the changes you make to it and how long you take to decide.</li>{% endif %}
   <li>Counts of how often your {% if self_signup %}ads{% else %}listings{% endif %} are viewed and how often buyers ask for your phone number.</li>
 </ul>
