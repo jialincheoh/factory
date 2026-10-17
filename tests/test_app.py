@@ -2,6 +2,7 @@
 agent signs in, uploads photos, reviews drafts, publishes; buyer searches,
 opens the listing and reveals the phone number; every step is logged."""
 import io
+import json
 import re
 import uuid
 
@@ -605,3 +606,90 @@ def test_media_endpoint_refuses_plain_forms_and_junk():
     r = client.post("/api/chat/media", headers=MEDIA_HEADERS, data={"messages": '[{"role":"user","content":"hi"}]'},
                     files=[("photo", ("p.jpg", b"not an image", "image/jpeg"))])
     assert r.status_code == 400 and "readable image" in r.json()["detail"]
+
+
+# ---------------------------------------------------------------- streaming, revisions, semantic search, evals
+
+def test_new_listing_streams_progress_then_redirects(agent):
+    client = TestClient(app)
+    token = sign_in(client, agent)
+    buf = io.BytesIO(); Image.new("RGB", (640, 480), (90, 90, 90)).save(buf, "JPEG")
+    with client.stream("POST", "/agent/new", headers={"Accept": "application/x-ndjson"},
+                       data={"description": "Factory for sale in Senai, 1 acre, 200A power.", "csrf": token},
+                       files=[("photos", ("a.jpg", buf.getvalue(), "image/jpeg"))]) as r:
+        assert r.headers["content-type"].startswith("application/x-ndjson")
+        lines = [json.loads(line) for line in r.iter_lines() if line.strip()]
+    steps = [m["step"] for m in lines if "step" in m]
+    assert steps[0].startswith("Masked contact details") and any("wrote 3 drafts" in s for s in steps)
+    assert lines[-1]["done"] is True and lines[-1]["redirect"].startswith("/agent/requests/")
+    assert client.get(lines[-1]["redirect"]).status_code == 200
+    # Validation errors are not streamed: the page comes back as usual.
+    r = client.post("/agent/new", headers={"Accept": "application/x-ndjson"},
+                    data={"description": "short", "csrf": token})
+    assert r.status_code == 400 and r.headers["content-type"].startswith("text/html")
+
+
+def test_agent_feedback_revises_one_draft_and_resumes_the_same_thread(agent):
+    client = TestClient(app)
+    token = sign_in(client, agent)
+    request_id, page = upload_three_photos(
+        client, token, "Factory for sale in Senai. Two acres. 400A power. Freehold title. Container access.")
+    ids = re.findall(r'name="rank_([0-9a-f-]{36})"', page)
+    target = ids[0]
+    before = db_one("SELECT ad_text FROM candidates WHERE candidate_id = %s", [target])[0]
+    url = f"/agent/requests/{request_id}/drafts/{target}/revise"
+    assert client.post(url, data={"feedback": "x", "csrf": token}).status_code == 400  # too short
+    r = client.post(url, data={"feedback": "Make it shorter please, call 012-345 6789", "csrf": token},
+                    follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"].endswith(f"#draft-{target}")
+    feedback, ad_text = db_one("SELECT feedback, ad_text FROM draft_revisions WHERE candidate_id = %s", [target])
+    assert feedback == "Make it shorter please, call [phone]" and len(ad_text) < len(before)
+    page = client.get(f"/agent/requests/{request_id}").text
+    assert "Revised 1 time" in page and ad_text in page
+    assert db_one("SELECT ad_text FROM candidates WHERE candidate_id = %s", [target])[0] == before  # original kept
+
+    # Second feedback resumes the paused graph from its Postgres checkpoint: still one thread.
+    client.post(url, data={"feedback": "even shorter", "csrf": token})
+    assert db_one("SELECT count(DISTINCT thread_id) FROM checkpoints WHERE thread_id = %s",
+                  [f"revise:{request_id}"])[0] == 1
+    assert db_one("SELECT count(*) FROM draft_revisions WHERE candidate_id = %s", [target])[0] == 2
+
+    # Publishing the revised text unchanged counts as kept with no edits.
+    latest = db_one("SELECT headline, ad_text FROM draft_revisions WHERE candidate_id = %s "
+                    "ORDER BY created_at DESC LIMIT 1", [target])
+    r = client.post(f"/agent/requests/{request_id}/publish", follow_redirects=False,
+                    data={"csrf": token, "choice": target, f"headline_{target}": latest[0],
+                          f"body_{target}": latest[1], "property_type": "factory", "deal_type": "sale"})
+    assert r.status_code == 303
+    assert db_one("SELECT decision_type, edit_distance FROM decisions WHERE request_id = %s", [request_id]) == ("kept", 0)
+    assert client.post(url, data={"feedback": "too late", "csrf": token}).status_code == 409
+
+
+def test_semantic_query_ranks_by_meaning():
+    from app import db as appdb, embeddings
+    from app.ai.schemas import SearchFilters
+    with appdb.connect() as conn:
+        embeddings.embed_missing(conn)
+        missing = conn.execute("SELECT count(*) AS n FROM published_ads pa JOIN listings l USING (listing_id) "
+                               "WHERE l.status = 'published' AND pa.embedding IS NULL").fetchone()["n"]
+        assert missing == 0  # publishing (and the backfill) embeds every live ad
+        rows = conn.execute("""SELECT pa.ad_id, pa.headline, pa.ad_text, l.title, l.location, l.state, l.features
+                               FROM published_ads pa JOIN listings l USING (listing_id) WHERE l.status = 'published'
+                               ORDER BY pa.published_at LIMIT 1""").fetchall()
+        assert rows, "an earlier test publishes a listing"
+        # Fake embeddings are deterministic: the exact ad text is the nearest neighbour of itself.
+        results = appdb.search_listings(conn, SearchFilters(semantic_query=embeddings.ad_text(rows[0])))
+        assert results[0]["ad_id"] == rows[0]["ad_id"]
+
+
+def test_eval_dataset_export_and_local_run():
+    from app import db as appdb
+    from scripts import eval_ads
+    with appdb.connect() as conn:
+        examples = eval_ads.export_examples(conn)
+    assert examples and all(e["outputs"]["card"]["property_type"] in ("factory", "warehouse") for e in examples)
+    assert all("012-345" not in e["inputs"]["description"] for e in examples)
+    summary = eval_ads.run_local(examples[:2])
+    assert set(summary) == {"card_accuracy", "drafts_supported", "format_ok", "closeness_to_kept", "no_contact_details"}
+    assert summary["card_accuracy"] is not None and 0 <= summary["card_accuracy"] <= 1
+    assert summary["no_contact_details"] == 1.0

@@ -8,7 +8,8 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
+from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse,
+                               Response, StreamingResponse)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from psycopg.types.json import Jsonb
@@ -16,7 +17,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import brochure, config, db, geo, images, security, seo
+from . import brochure, config, db, embeddings, geo, images, revisions, security, seo
 from .ai import get_assistant, pii
 from .ai.calllog import CallRecorder, emit
 from .ai.llm import AD_PROMPT_FINGERPRINT, PROMPT_VERSION, SEARCH_PROMPT_FINGERPRINT, SEARCH_PROMPT_VERSION
@@ -556,13 +557,14 @@ def new_listing_form(request: Request, agent_id: str = Depends(security.require_
 def _create_request(conn, agent_id, listing_id, description: str, photos: list[bytes],
                     recorder: CallRecorder) -> uuid.UUID:
     """Call the model, then store the request, every draft in shuffled order, and the model calls."""
-    assistant = get_assistant()
     started = time.monotonic()
-    result = assistant.write_ads(description, [(p, "image/jpeg") for p in photos], config.DRAFTS_PER_REQUEST,
-                                 recorder)
-    analysis = result.analysis
-    latency_ms = int((time.monotonic() - started) * 1000)
+    result = get_assistant().write_ads(description, [(p, "image/jpeg") for p in photos], config.DRAFTS_PER_REQUEST,
+                                       recorder)
+    return _store_request(conn, agent_id, listing_id, result, int((time.monotonic() - started) * 1000), recorder)
 
+
+def _store_request(conn, agent_id, listing_id, result, latency_ms: int, recorder: CallRecorder) -> uuid.UUID:
+    analysis = result.analysis
     request_id, seed = uuid.uuid4(), random.SystemRandom().getrandbits(63)
     conn.execute(
         "INSERT INTO generation_requests (request_id, listing_id, real_estate_agent_id, model_name, "
@@ -583,6 +585,46 @@ def _create_request(conn, agent_id, listing_id, description: str, photos: list[b
              for pos, i in enumerate(order, 1)])
     log_model_calls(conn, "write_ads", recorder, request_id=request_id)
     return request_id
+
+
+def _save_new_listing(agent_id, description: str, processed: list, result, latency_ms: int,
+                      recorder: CallRecorder) -> uuid.UUID:
+    """Listing, photos and the generation request in one transaction, after the model has answered."""
+    with db.connect() as conn:
+        listing_id = uuid.uuid4()
+        conn.execute("INSERT INTO listings (listing_id, real_estate_agent_id, description_original) "
+                     "VALUES (%s, %s, %s)", [listing_id, agent_id, description])
+        for pos, (data, w, h) in enumerate(processed, 1):
+            conn.execute("INSERT INTO listing_images (image_id, listing_id, position, file_name, width, height) "
+                         "VALUES (%s,%s,%s,%s,%s,%s)", [uuid.uuid4(), listing_id, pos, images.save(data), w, h])
+        return _store_request(conn, agent_id, listing_id, result, latency_ms, recorder)
+
+
+def _stream_new_listing(agent_id, description: str, processed: list, recorder: CallRecorder):
+    """NDJSON progress for the new-listing page: one line per finished graph step, then where to go."""
+    async def lines():
+        started = time.monotonic()
+        yield json.dumps({"step": f"Masked contact details; reading {len(processed)} photo(s) and writing drafts…"}) + "\n"
+        result = None
+        try:
+            async for kind, value in get_assistant().astream_ads(
+                    description, [(d, "image/jpeg") for d, _, _ in processed], config.DRAFTS_PER_REQUEST, recorder):
+                if kind == "step":
+                    yield json.dumps({"step": value}) + "\n"
+                else:
+                    result = value
+            yield json.dumps({"step": "Saving the drafts…"}) + "\n"
+            request_id = await run_in_threadpool(_save_new_listing, agent_id, description, processed, result,
+                                                 int((time.monotonic() - started) * 1000), recorder)
+        except Exception as exc:
+            log_failed_calls("write_ads", recorder)
+            yield json.dumps({"error": f"The ad writer failed ({type(exc).__name__}). Nothing was saved; "
+                                       "please try again."}) + "\n"
+            return
+        yield json.dumps({"done": True, "redirect": f"/agent/requests/{request_id}"}) + "\n"
+
+    return StreamingResponse(lines(), media_type="application/x-ndjson",
+                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
 @app.post("/agent/new")
@@ -631,16 +673,15 @@ async def create_listing(request: Request, agent_id: str = Depends(security.requ
                       error="You have reached today's limit for new ads. Please try again tomorrow.")
 
     recorder = CallRecorder()
+    if "application/x-ndjson" in request.headers.get("accept", ""):
+        return _stream_new_listing(agent_id, description, processed, recorder)  # the page shows live progress
 
-    def run():
-        with db.connect() as conn:
-            listing_id = uuid.uuid4()
-            conn.execute("INSERT INTO listings (listing_id, real_estate_agent_id, description_original) "
-                         "VALUES (%s, %s, %s)", [listing_id, agent_id, description])
-            for pos, (data, w, h) in enumerate(processed, 1):
-                conn.execute("INSERT INTO listing_images (image_id, listing_id, position, file_name, width, height) "
-                             "VALUES (%s,%s,%s,%s,%s,%s)", [uuid.uuid4(), listing_id, pos, images.save(data), w, h])
-            return _create_request(conn, agent_id, listing_id, description, [d for d, _, _ in processed], recorder)
+    def run():  # without JavaScript: wait for the whole graph, then redirect
+        started = time.monotonic()
+        result = get_assistant().write_ads(description, [(d, "image/jpeg") for d, _, _ in processed],
+                                           config.DRAFTS_PER_REQUEST, recorder)
+        return _save_new_listing(agent_id, description, processed, result,
+                                 int((time.monotonic() - started) * 1000), recorder)
 
     try:
         request_id = await run_in_threadpool(run)
@@ -665,10 +706,21 @@ def _load_request(conn, request_id, agent_id):
 def review(request_id: uuid.UUID, request: Request, agent_id: str = Depends(security.require_agent),
            conn=Depends(db.get_conn)):
     req = _load_request(conn, request_id, agent_id)
-    drafts = conn.execute("SELECT candidate_id, display_position, headline, ad_text, cover_position, "
-                          "raw_response->'check' AS check "
-                          "FROM candidates "
-                          "WHERE request_id = %s ORDER BY display_position", [request_id]).fetchall()
+    # The latest successful revision (agent feedback) replaces the draft text and its check.
+    drafts = conn.execute("""
+        SELECT c.candidate_id, c.display_position, coalesce(r.headline, c.headline) AS headline,
+               coalesce(r.ad_text, c.ad_text) AS ad_text, c.cover_position,
+               CASE WHEN r.revision_id IS NULL THEN c.raw_response->'check'
+                    ELSE jsonb_build_object('checked', r.unsupported_claims IS NOT NULL,
+                                            'unsupported_claims', coalesce(r.unsupported_claims, '[]'::jsonb)) END AS check,
+               r.feedback AS last_feedback,
+               (SELECT count(*) FROM draft_revisions x WHERE x.candidate_id = c.candidate_id AND x.ok) AS revisions,
+               (SELECT x.ok FROM draft_revisions x WHERE x.candidate_id = c.candidate_id
+                 ORDER BY x.created_at DESC LIMIT 1) AS last_ok
+        FROM candidates c
+        LEFT JOIN LATERAL (SELECT * FROM draft_revisions r WHERE r.candidate_id = c.candidate_id AND r.ok
+                           ORDER BY created_at DESC LIMIT 1) r ON true
+        WHERE c.request_id = %s ORDER BY c.display_position""", [request_id]).fetchall()
     decision = conn.execute("SELECT * FROM decisions WHERE request_id = %s", [request_id]).fetchone()
     photos = conn.execute("SELECT position, file_name FROM listing_images WHERE listing_id = %s ORDER BY position",
                           [req["listing_id"]]).fetchall()
@@ -811,6 +863,10 @@ async def publish(request_id: uuid.UUID, request: Request, agent_id: str = Depen
 
     opened = request.session.pop(f"opened:{request_id}", None)
     final_text = f"{headline}\n\n{body}"
+    if candidate:  # the agent edited the latest revision of the draft, if they asked for any
+        shown = revisions.current_drafts(conn, request_id)
+        shown = next(d for d in shown.values() if d["candidate_id"] == candidate["candidate_id"])
+        candidate = {**candidate, "headline": shown["headline"], "ad_text": shown["ad_text"]}
     conn.execute(
         "INSERT INTO decisions (request_id, decision_type, kept_candidate_id, final_text, edit_distance, "
         "decided_at, seconds_to_decide, cover_position) VALUES (%s,%s,%s,%s,%s,now(),%s,%s)",
@@ -834,7 +890,35 @@ async def publish(request_id: uuid.UUID, request: Request, agent_id: str = Depen
                  "VALUES (%s,%s,%s,'own_portal',now(),%s,%s)",
                  [uuid.uuid4(), request_id, req["listing_id"], headline, body])
     conn.commit()  # before redirecting, so the listing page sees it
+    embeddings.embed_missing(conn)  # meaning-based search; never blocks publishing
     return RedirectResponse(seo.listing_path({"listing_id": req["listing_id"], "title": card["title"]}), status_code=303)
+
+
+@app.post("/agent/requests/{request_id}/drafts/{candidate_id}/revise")
+async def revise_draft(request_id: uuid.UUID, candidate_id: uuid.UUID, request: Request,
+                       agent_id: str = Depends(security.require_agent), feedback: str = Form(""),
+                       csrf: str = Form(None)):
+    """Human-in-the-loop: the agent's feedback resumes the paused revision graph for this request."""
+    security.check_csrf(request, csrf)
+    feedback = feedback.strip()
+    if not 3 <= len(feedback) <= revisions.MAX_FEEDBACK:
+        raise HTTPException(400, f"Write what to change (3 to {revisions.MAX_FEEDBACK} characters).")
+    if not security.REVISIONS_PER_AGENT.allow(agent_id):
+        raise HTTPException(429, "You have reached today's limit for revisions. Please try again tomorrow.")
+
+    def run():
+        revisions.ensure_setup()  # before opening a transaction (see ensure_setup)
+        with db.connect() as conn:
+            _load_request(conn, request_id, agent_id)
+            if conn.execute("SELECT 1 FROM decisions WHERE request_id = %s", [request_id]).fetchone():
+                raise HTTPException(409, "This request already has a decision.")
+            if not conn.execute("SELECT 1 FROM candidates WHERE request_id = %s AND candidate_id = %s",
+                                [request_id, candidate_id]).fetchone():
+                raise HTTPException(404)
+            return revisions.revise(conn, request_id, candidate_id, feedback)
+
+    await run_in_threadpool(run)
+    return RedirectResponse(f"/agent/requests/{request_id}#draft-{candidate_id}", status_code=303)
 
 
 @app.post("/agent/requests/{request_id}/regenerate")

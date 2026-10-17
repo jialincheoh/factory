@@ -89,7 +89,7 @@
     <p class="muted small">Drafts appear in random order. Choose one and edit it freely, or write your own.</p>
     <p class="muted small">Optional: rank the drafts from 1 (most creative) to {{ drafts | length }} (least creative), using each number once. This helps our research and does not change which ad is published.</p>
     {% for d in drafts %}
-    <label class="draft">
+    <label class="draft" id="draft-{{ d.candidate_id }}">
       <input type="radio" name="choice" value="{{ d.candidate_id }}" required>
       <span class="draft-body">
         <span class="draft-label">Draft {{ d.display_position }}
@@ -104,6 +104,12 @@
         {% if d.cover_position %}{% set cp = photos[d.cover_position - 1] %}<span class="draft-cover small muted"><img src="/uploads/{{ cp.file_name }}" width="72" height="48" alt="">Suggested cover: photo {{ d.cover_position }}{% if captions[d.cover_position] %} ({{ captions[d.cover_position] }}){% endif %}</span>{% endif %}
         <input name="headline_{{ d.candidate_id }}" value="{{ d.headline }}" maxlength="120" aria-label="Headline">
         <textarea name="body_{{ d.candidate_id }}" rows="5" aria-label="Ad text">{{ d.ad_text }}</textarea>
+        {% if d.revisions %}<span class="small muted">Revised {{ d.revisions }} time{{ 's' if d.revisions != 1 }}; last request: “{{ d.last_feedback }}”</span>{% endif %}
+        {% if d.last_ok == false %}<span class="notice warn small">The last revision could not be made. The text above is unchanged; try again.</span>{% endif %}
+        <span class="revise-row">
+          <input name="feedback" form="revise-{{ d.candidate_id }}" maxlength="500" placeholder="Ask for a change, e.g. shorter, lead with the power supply" aria-label="Feedback for draft {{ d.display_position }}">
+          <button class="button secondary small" type="submit" form="revise-{{ d.candidate_id }}">Revise</button>
+        </span>
       </span>
     </label>
     {% endfor %}
@@ -130,6 +136,11 @@
     <button class="button" type="submit">Publish ad</button>
   </div>
 </form>
+{% for d in drafts %}
+<form method="post" action="/agent/requests/{{ req.request_id }}/drafts/{{ d.candidate_id }}/revise" id="revise-{{ d.candidate_id }}" class="revise-form" hidden>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+</form>
+{% endfor %}
 <form method="post" action="/agent/requests/{{ req.request_id }}/regenerate" class="regen" id="regen-form">
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <button class="linklike" type="submit">None of these work: generate new drafts</button>

@@ -38,6 +38,10 @@ LLM_MODEL = os.environ.get("LLM_MODEL", "openai:gpt-4.1-mini")
 # The model that actually answered is recorded with each request.
 LLM_FALLBACK_MODEL = os.environ.get("LLM_FALLBACK_MODEL", "")
 
+# Embeddings for meaning-based search, as "provider:model" (LangChain init_embeddings), e.g.
+# "google_genai:gemini-embedding-001". Empty turns it off; "fake" is for tests.
+EMBEDDINGS_MODEL = os.environ.get("EMBEDDINGS_MODEL", "")
+
 # Send model calls to LangSmith for debugging. Traces include real estate agents'
 # descriptions and buyers' chat messages (photos are removed), and /privacy does
 # not mention LangSmith, so this is for local development only.

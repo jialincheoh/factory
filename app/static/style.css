@@ -271,3 +271,19 @@ details summary { cursor: pointer; color: var(--muted); }
 .cover-pick input { position: absolute; opacity: 0; }
 .cover-pick input:checked + img { border-color: var(--accent, #1f3a5f); }
 .cover-pick input:focus-visible + img { outline: 2px solid currentColor; }
+
+/* live progress of the draft graph on the new-listing page */
+.progress-steps { list-style: none; padding: 0; margin: 4px 0 0; display: grid; gap: 6px; font-size: .92rem; }
+.progress-steps li { padding-left: 24px; position: relative; color: var(--text); }
+.progress-steps li::before { content: ""; position: absolute; left: 4px; top: .45em; width: 9px; height: 9px; border-radius: 50%;
+  border: 2px solid var(--brass, #b08d57); border-right-color: transparent; animation: spin .8s linear infinite; }
+.progress-steps li.done { color: var(--muted); }
+.progress-steps li.done::before { border: 0; background: var(--brass, #b08d57); animation: none; }
+.progress-steps li.error { color: #b3261e; }
+.progress-steps li.error::before { border: 0; background: #b3261e; animation: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* agent feedback on one draft (revision graph) */
+.revise-row { display: flex; gap: 8px; margin-top: 6px; }
+.revise-row input { flex: 1; min-width: 0; font-size: .9rem; }
+.revise-row button { white-space: nowrap; }

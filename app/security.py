@@ -64,6 +64,7 @@ class RateLimit:
 CHAT_PER_VISITOR = RateLimit(30, 10 * 60)   # one buyer typing: 30 messages per 10 minutes
 CHAT_PER_IP = RateLimit(120, 10 * 60)       # an office or mobile network shares one IP
 ADS_PER_AGENT = RateLimit(40, 24 * 3600)    # new listings and regenerations per agent per day
+REVISIONS_PER_AGENT = RateLimit(80, 24 * 3600)  # feedback revisions of single drafts per agent per day
 
 
 # --- sessions (signed cookie via Starlette's SessionMiddleware) ---

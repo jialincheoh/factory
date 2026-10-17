@@ -374,11 +374,55 @@
         box.appendChild(img);
       }
     });
-    document.getElementById("new-listing").addEventListener("submit", () => {
-      document.getElementById("generate-btn").disabled = true;
-      document.getElementById("generate-wait").hidden = false;
+    // Submit with fetch and show each step of the draft graph as it finishes (the server streams
+    // one JSON line per step). Without JavaScript the form posts normally and redirects when done.
+    const form = document.getElementById("new-listing");
+    form.addEventListener("submit", async (e) => {
+      if (!window.fetch || !window.TextDecoder || !window.ReadableStream) return;
+      e.preventDefault();
+      const button = document.getElementById("generate-btn");
+      const wait = document.getElementById("generate-wait");
+      const steps = document.getElementById("generate-steps");
+      button.disabled = true; wait.hidden = false; steps.replaceChildren(); steps.hidden = false;
+      const addStep = (text, cls) => {
+        const prev = steps.lastElementChild; if (prev) prev.classList.add("done");
+        const li = el("li", cls || "", text); steps.appendChild(li); return li;
+      };
+      const fail = (text) => { addStep(text, "error"); button.disabled = false; wait.hidden = true; };
+      let res;
+      try {
+        res = await fetch(form.action, { method: "POST", body: new FormData(form), headers: { Accept: "application/x-ndjson" } });
+      } catch (err) { fail("Could not reach the server. Please try again."); return; }
+      if (!(res.headers.get("content-type") || "").includes("application/x-ndjson")) {
+        // A validation error comes back as the normal page: show it.
+        const html = await res.text(); document.open(); document.write(html); document.close(); return;
+      }
+      const reader = res.body.getReader(), decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+        let nl;
+        while ((nl = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, nl).trim(); buffer = buffer.slice(nl + 1);
+          if (!line) continue;
+          const msg = JSON.parse(line);
+          if (msg.step) addStep(msg.step);
+          if (msg.error) { fail(msg.error); return; }
+          if (msg.done) { addStep("Done. Opening your drafts…", "done"); window.location.href = msg.redirect; return; }
+        }
+        if (done) break;
+      }
+      fail("The connection closed before the drafts were ready. Please try again.");
     });
   }
+
+  // Revising a draft can take a few seconds: say so, and stop double submits.
+  document.querySelectorAll(".revise-form").forEach((f) => {
+    f.addEventListener("submit", () => {
+      document.querySelectorAll(`button[form="${f.id}"]`).forEach((b) => { b.disabled = true; b.textContent = "Revising…"; });
+    });
+  });
 
   // Editing a draft selects it.
   document.querySelectorAll(".draft").forEach((label) => {

@@ -159,3 +159,7 @@ class SearchFilters(BaseModel):
     min_loading_bays: Optional[int] = Field(None, ge=0)
     features: list[str] = Field(default_factory=list, description="Lowercase feature tags that must all be present, e.g. ['overhead crane']")
     keywords: Optional[str] = Field(None, description="Free-text words to look for in the ad text")
+    semantic_query: Optional[str] = Field(
+        None, description="What the buyer wants the property for, or qualities that are not a filter above, in a few "
+                          "words, e.g. 'food processing', 'cold storage', 'heavy machinery assembly'. Ranks results by "
+                          "meaning; it does not exclude any listing")

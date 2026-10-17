@@ -202,6 +202,24 @@ class OfflineAssistant:
         return AdResult(analysis, f"[offline rules, {len(images)} photo(s)]\n{description}", self.model_name,
                         [{"checked": False, "unsupported_claims": [], "earlier_versions": []} for _ in drafts])
 
+    async def astream_ads(self, description: str, images: list[tuple[bytes, str]], n_drafts: int, recorder=None):
+        """Same interface as LLMAssistant.astream_ads: progress lines, then the result."""
+        result = self.write_ads(description, images, n_drafts, recorder)
+        yield "step", (f"Read the description, filled the property card and wrote {len(result.analysis.drafts)} "
+                       "drafts (offline rules; photos not checked).")
+        yield "result", result
+
+    def revise(self, analysis, i: int, feedback: str):
+        """Rule-based stand-in for the agent-feedback edit: understands 'shorter' only."""
+        d = analysis.drafts[i]
+        body = d.body
+        if "short" in feedback.lower() or "pendek" in feedback.lower():
+            body = " ".join(re.split(r"(?<=[.!?])\s+", body)[:2])
+        return AdDraft(headline=pii.mask(d.headline), body=pii.mask(body), cover_photo=d.cover_photo), self.model_name
+
+    def check_draft(self, analysis, i: int):
+        return None, "check skipped: offline"
+
     def transcribe(self, audio: bytes, mime_type: str, recorder=None) -> str:
         """No speech recognition offline: the website tells the buyer to type instead."""
         _record(recorder, "transcribe", time.monotonic())

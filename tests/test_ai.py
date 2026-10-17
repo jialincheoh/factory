@@ -17,47 +17,55 @@ def analysis_with(*bodies):
 
 
 def run_graph(first_check, second_check=None):
+    """first_check / second_check: {draft index: claims} for the first and second check round
+    (None = every check call fails). Drafts not named pass."""
     calls = []
-    checks = iter([first_check, second_check])
+    rounds = {"n": 0}
 
     def analyse(description, images, n):
         a = analysis_with("200A power.", "400A power and 5 min to the port.")
         a.drafts[1].cover_photo = 2
         return a, "m:a"
 
-    def check(analysis):
-        calls.append("check")
-        return next(checks), "m:a"
+    def check(analysis, i):
+        verdicts = first_check if analysis.drafts[1].headline != "Fixed" else second_check
+        calls.append(("check", i))
+        if verdicts is None:
+            return None, "check failed: Boom"
+        return verdicts.get(i, []), "m:a"
 
-    def rewrite(analysis, failing):
-        calls.append(("rewrite", sorted(failing)))
-        return {i: AdDraft(headline="Fixed", body="200A power.") for i in failing}, "m:b"  # no cover from the editor
+    def rewrite(analysis, i, claims):
+        calls.append(("rewrite", i))
+        return AdDraft(headline="Fixed", body="200A power."), "m:b"  # no cover from the editor
 
     graph = draft_graph.build(analyse, check, rewrite)
-    state = graph.invoke({"description": "x", "images": [], "n_drafts": 2})
+    state = graph.invoke({"description": "x", "images": [b"photo"], "n_drafts": 2})
     return state, calls
 
 
-def test_clean_drafts_are_checked_once():
+def test_clean_drafts_are_checked_once_each_in_parallel():
     state, calls = run_graph({0: [], 1: []})
-    assert calls == ["check"]
+    assert sorted(calls) == [("check", 0), ("check", 1)]
     assert [c["unsupported_claims"] for c in draft_graph.draft_checks(state)] == [[], []]
+    assert state["images"] == []  # photos dropped after the writer, so checkpoints stay small
 
 
 def test_failing_draft_is_rewritten_once_and_original_kept():
-    state, calls = run_graph({0: [], 1: ["400A power", "5 min to the port"]}, {0: [], 1: []})
-    assert calls == ["check", ("rewrite", [1]), "check"]
+    state, calls = run_graph({0: [], 1: ["400A power", "5 min to the port"]}, {1: []})
+    assert sorted(calls[:2]) == [("check", 0), ("check", 1)]
+    assert calls[2:] == [("rewrite", 1), ("check", 1)]  # only the failing draft is fixed and re-checked
     assert state["analysis"].drafts[1].body == "200A power."
     assert state["analysis"].drafts[0].headline == "Draft 0"  # passing drafts untouched
     checks = draft_graph.draft_checks(state)
     assert checks[1]["earlier_versions"][0]["body"] == "400A power and 5 min to the port."
-    assert checks[1]["unsupported_claims"] == [] and state["models"] == ["m:a", "m:a", "m:b", "m:a"]
+    assert checks[1]["earlier_versions"][0]["unsupported_claims"] == ["400A power", "5 min to the port"]
+    assert checks[1]["unsupported_claims"] == [] and sorted(state["models"]) == ["m:a"] * 4 + ["m:b"]
     assert state["analysis"].drafts[1].cover_photo == 2  # the rewrite keeps the writer's cover choice
 
 
 def test_still_failing_after_max_rewrites_is_flagged_not_looped():
     state, calls = run_graph({1: ["400A power"]}, {1: ["still 400A"]})
-    assert calls.count("check") == 2 and len(calls) == 3
+    assert [c for c in calls if c[0] == "rewrite"] == [("rewrite", 1)] and len(calls) == 4
     assert draft_graph.draft_checks(state)[1]["unsupported_claims"] == ["still 400A"]
 
 
@@ -67,24 +75,39 @@ def test_failed_rewrite_keeps_drafts_and_flags():
     def analyse(description, images, n):
         return analysis_with("200A power.", "400A power."), "m:a"
 
-    def check(analysis):
-        calls.append("check")
-        return {0: [], 1: ["400A power"]}, "m:a"
+    def check(analysis, i):
+        calls.append(("check", i))
+        return ([] if i == 0 else ["400A power"]), "m:a"
 
-    def rewrite(analysis, failing):
-        calls.append("rewrite")
-        return {}, "rewrite failed: GoogleRateLimitError"
+    def rewrite(analysis, i, claims):
+        calls.append(("rewrite", i))
+        return None, "rewrite failed: GoogleRateLimitError"
 
     state = draft_graph.build(analyse, check, rewrite).invoke({"description": "x", "images": [], "n_drafts": 2})
-    assert calls == ["check", "rewrite"]  # no pointless second check
+    assert sorted(calls) == [("check", 0), ("check", 1), ("rewrite", 1)]  # no pointless second check
     assert state["analysis"].drafts[1].body == "400A power."
     assert draft_graph.draft_checks(state)[1]["unsupported_claims"] == ["400A power"]
+    assert "rewrite failed: GoogleRateLimitError" in state["models"]
 
 
 def test_failed_check_leaves_drafts_unchecked():
     state, calls = run_graph(None)
-    assert calls == ["check"]
+    assert sorted(calls) == [("check", 0), ("check", 1)]
     assert draft_graph.draft_checks(state)[0]["checked"] is False
+
+
+def test_progress_messages_while_streaming():
+    def analyse(description, images, n):
+        return analysis_with("200A power.", "400A power."), "m:a"
+    graph = draft_graph.build(analyse, lambda a, i: (([] if i == 0 else ["400A"]), "m"),
+                              lambda a, i, c: (AdDraft(headline="Fixed", body="200A power."), "m"))
+    steps = [draft_graph.describe_step(node, update)
+             for chunk in graph.stream({"description": "x", "images": [], "n_drafts": 2}, stream_mode="updates")
+             for node, update in chunk.items()]
+    steps = [s for s in steps if s]
+    assert steps[0].startswith("Read the description") and "wrote 2 drafts" in steps[0]
+    assert "Draft 1: every claim is supported." in steps and any("Draft 2: 1 claim(s)" in s for s in steps)
+    assert "Draft 2: edited." in steps
 
 
 class ToolFakeModel(GenericFakeChatModel):
@@ -179,7 +202,7 @@ def test_mask_contact_details_but_not_specs():
 
 # Each prompt version pinned to its prompt text. If this fails, a prompt changed:
 # bump PROMPT_VERSION or SEARCH_PROMPT_VERSION and record the new fingerprint here.
-PROMPT_FINGERPRINTS = {"ads-v5-covers": "9d469925a4d8", "search-v2-scoped": "a3b23c6b519d", "search-v3-media": "f4e54a580c66"}
+PROMPT_FINGERPRINTS = {"ads-v5-covers": "9d469925a4d8", "ads-v6-parallel": "98224e6dad9a", "search-v2-scoped": "a3b23c6b519d", "search-v3-media": "f4e54a580c66", "search-v4-semantic": "6cb042a733d4"}
 
 
 def test_prompt_edits_need_a_new_version():

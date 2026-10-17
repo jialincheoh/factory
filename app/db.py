@@ -5,7 +5,7 @@ from contextlib import contextmanager
 import psycopg
 from psycopg.rows import dict_row
 
-from . import config
+from . import config, embeddings
 from .ai.schemas import SearchFilters
 
 
@@ -91,5 +91,10 @@ def search_listings(conn, f: SearchFilters, limit: int = 60) -> list[dict]:
         pat = f"%{_escape_like(f.keywords)}%"
         add("(pa.ad_text ILIKE %s OR pa.headline ILIKE %s OR l.title ILIKE %s)", pat, pat, pat)
 
-    sql = LISTING_CARD_SQL + "".join(f" AND {w}" for w in where) + " ORDER BY pa.published_at DESC LIMIT %s"
-    return conn.execute(sql, [*params, limit]).fetchall()
+    vec = embeddings.query_vector(f.semantic_query) if f.semantic_query else None
+    if vec:  # meaning-based ranking; ads not embedded yet come last
+        order, order_params = " ORDER BY pa.embedding <=> %s::vector NULLS LAST, pa.published_at DESC", [vec]
+    else:
+        order, order_params = " ORDER BY pa.published_at DESC", []
+    sql = LISTING_CARD_SQL + "".join(f" AND {w}" for w in where) + order + " LIMIT %s"
+    return conn.execute(sql, [*params, *order_params, limit]).fetchall()

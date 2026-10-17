@@ -33,6 +33,9 @@ def main() -> None:
                 conn.execute("INSERT INTO schema_migrations (version, file_name) VALUES (%s, %s)",
                              [version(path), path.name])
             print(f"applied {path.name}")
+    # LangGraph's checkpoint tables for the draft revision graph (its own migrations, idempotent).
+    from app import revisions
+    revisions.ensure_setup()
     print("database is up to date")
 
 
