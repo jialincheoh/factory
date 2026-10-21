@@ -2,6 +2,7 @@
 agent signs in, uploads photos, reviews drafts, publishes; buyer searches,
 opens the listing and reveals the phone number; every step is logged."""
 import io
+from datetime import datetime, timezone
 import json
 import re
 import uuid
@@ -743,3 +744,8 @@ def test_listings_without_a_pin_get_their_towns_centre(agent):
     with psycopg.connect(config.DATABASE_URL) as conn:
         lat, lng = conn.execute("SELECT latitude, longitude FROM listings WHERE listing_id = %s", [lid]).fetchone()
     assert (float(lat), float(lng)) == geo.AREAS["Bandar Kinrara"][1:]
+
+
+def test_footer_has_no_copyright_line():
+    page = TestClient(app).get("/privacy").text
+    assert "©" not in page

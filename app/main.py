@@ -88,7 +88,9 @@ def number(value, digits: int = 0) -> str:
 templates.env.filters.update(money=money, price_label=price_label, type_label=type_label, number=number)
 templates.env.globals.update(STATES=geo.STATES, AREAS=sorted(geo.AREAS), PROPERTY_TYPES=PROPERTY_TYPES,
                              ZONINGS=ZONINGS, MAP_TILES=MAP_TILES, currency=config.CURRENCY,
-                             SITE_NAME=config.SITE_NAME, listing_path=seo.listing_path, absolute=seo.absolute,
+                             SITE_NAME=config.SITE_NAME,
+                             now_year=lambda: datetime.now(timezone.utc).year,
+                             listing_path=seo.listing_path, absolute=seo.absolute,
                              seo_script=seo.to_script,
                              static_version=STATIC_VERSION)
 
