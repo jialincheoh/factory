@@ -205,7 +205,7 @@ def test_mask_contact_details_but_not_specs():
 
 # Each prompt version pinned to its prompt text. If this fails, a prompt changed:
 # bump PROMPT_VERSION or SEARCH_PROMPT_VERSION and record the new fingerprint here.
-PROMPT_FINGERPRINTS = {"ads-v5-covers": "9d469925a4d8", "ads-v6-parallel": "98224e6dad9a", "search-v2-scoped": "a3b23c6b519d", "search-v3-media": "f4e54a580c66", "search-v4-semantic": "6cb042a733d4"}
+PROMPT_FINGERPRINTS = {"ads-v5-covers": "9d469925a4d8", "ads-v6-parallel": "98224e6dad9a", "search-v2-scoped": "a3b23c6b519d", "search-v3-media": "f4e54a580c66", "search-v4-semantic": "6cb042a733d4", "ads-v7-land": "2276f8152554", "search-v5-land": "387b07f54fed"}
 
 
 def test_prompt_edits_need_a_new_version():

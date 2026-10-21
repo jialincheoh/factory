@@ -27,7 +27,7 @@ services:
       - key: SITE_NAME
         value: Factory
       - key: SITE_URL
-        value: https://factory.onrender.com
+        value: https://corpbiz.my
       - key: CURRENCY
         value: RM
       - key: CURRENCY_CODE

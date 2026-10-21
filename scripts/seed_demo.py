@@ -165,7 +165,7 @@ def main():
             for pos, img in enumerate(photos_for(ptype, i), 1):
                 data, w, h = images.process_upload(_jpeg(img))
                 conn.execute("INSERT INTO listing_images (image_id, listing_id, position, file_name, width, height) "
-                             "VALUES (%s,%s,%s,%s,%s,%s)", [uuid.uuid4(), lid, pos, images.save(data), w, h])
+                             "VALUES (%s,%s,%s,%s,%s,%s)", [uuid.uuid4(), lid, pos, images.save(data, conn), w, h])
             conn.execute("INSERT INTO published_ads (ad_id, listing_id, channel, published_at, headline, ad_text) "
                          "VALUES (%s,%s,'own_portal',now() - make_interval(hours => %s),%s,%s)",
                          [uuid.uuid4(), lid, i, headline, body])

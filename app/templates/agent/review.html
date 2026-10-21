@@ -31,7 +31,7 @@
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <section class="panel">
     <h2>Property card</h2>
-    {% if card.property_type not in PROPERTY_TYPES %}<p class="notice warn">This doesn't look like a factory or warehouse. {{ SITE_NAME }} lists factories and warehouses only; shoplots and shop offices go on kedai.my. If it is a factory or warehouse, choose the type below.</p>{% endif %}
+    {% if card.property_type not in PROPERTY_TYPES %}<p class="notice warn">This doesn't look like a factory, warehouse or industrial land. {{ SITE_NAME }} lists those only; shoplots and shop offices go on kedai.my. If it is one of them, choose the type below.</p>{% endif %}
     <p class="muted small">Filled from your description and photos. Buyers filter on these fields, so check each one and leave unknowns empty.</p>
     <div class="card-grid">
       <label class="span2">Title <input name="title" value="{{ card.title or '' }}" maxlength="120"></label>

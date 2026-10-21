@@ -37,7 +37,7 @@ LEFT JOIN LATERAL (
   SELECT file_name, width, height FROM listing_images i
   WHERE i.listing_id = l.listing_id ORDER BY (i.position = l.cover_position) DESC, position LIMIT 1
 ) ci ON true
-WHERE l.status = 'published' AND l.property_type IN ('factory', 'warehouse')
+WHERE l.status = 'published' AND l.property_type IN ('factory', 'warehouse', 'land')
   AND NOT EXISTS (SELECT 1 FROM outcomes o WHERE o.listing_id = l.listing_id)  -- sold, withdrawn or expired
 """
 

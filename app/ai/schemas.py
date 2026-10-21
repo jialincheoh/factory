@@ -8,14 +8,14 @@ from typing import Literal, Optional, get_args
 
 from pydantic import BaseModel, Field
 
-# The site lists factories and warehouses only. "other" lets the model say a
-# description is something else (land, a shoplot, a house); such listings cannot be published.
-PropertyType = Literal["factory", "warehouse", "other"]
-PROPERTY_TYPES = ("factory", "warehouse")
+# The site lists factories, warehouses and industrial or commercial land. "other" lets the model say a
+# description is something else (a shoplot, a house); such listings cannot be published.
+PropertyType = Literal["factory", "warehouse", "land", "other"]
+PROPERTY_TYPES = ("factory", "warehouse", "land")
 
 DealType = Literal["sale", "rent"]
 Tenure = Literal["freehold", "leasehold"]
-Zoning = Literal["light_industrial", "medium_industrial", "heavy_industrial"]
+Zoning = Literal["light_industrial", "medium_industrial", "heavy_industrial", "commercial"]
 ZONINGS = get_args(Zoning)
 
 AMPS_PER_KVA = 1000 / (415 * 3 ** 0.5)  # 415 V three-phase, about 1.39 A per kVA
@@ -24,8 +24,8 @@ AMPS_PER_KVA = 1000 / (415 * 3 ** 0.5)  # 415 V three-phase, about 1.39 A per kV
 class PropertyCard(BaseModel):
     """The structured facts shown on every ad and used by buyer search."""
     title: str = Field(description="Short factual title, e.g. 'Detached factory with 400A power in Shah Alam'")
-    property_type: PropertyType = Field(description="factory or warehouse; 'other' if the description is for "
-                                                    "something else, such as land without a building, a shop or a house")
+    property_type: PropertyType = Field(description="factory, warehouse, or land (industrial or commercial land "
+                                                    "without a building); 'other' for something else, such as a shop or a house")
     deal_type: DealType = Field(description="'rent' if the property is for rent or lease (sewa); otherwise 'sale' (dijual)")
     location: Optional[str] = Field(None, description="Town or industrial area, e.g. 'Shah Alam', 'Senai', only if stated")
     state: Optional[str] = Field(None, description="Malaysian state, e.g. Selangor, Johor, Penang, only if stated or obvious from the town")
@@ -37,7 +37,7 @@ class PropertyCard(BaseModel):
     power_kva: Optional[int] = Field(None, gt=0, description="Electricity supply if quoted in kVA")
     tenure: Optional[Tenure] = Field(None, description="freehold (pegangan bebas) or leasehold (pajakan)")
     lease_years_left: Optional[int] = Field(None, gt=0, description="Years remaining on a leasehold title, if stated")
-    zoning: Optional[Zoning] = Field(None, description="Industrial category if stated (light/medium/heavy industrial)")
+    zoning: Optional[Zoning] = Field(None, description="Zoning if stated: light/medium/heavy industrial, or commercial")
     container_access: Optional[bool] = Field(None, description="True only if 40-ft container trailer access is stated or clearly visible")
     loading_bays: Optional[int] = Field(None, ge=0)
     features: list[str] = Field(
@@ -135,15 +135,16 @@ OutOfScopeReason = Literal["residential", "shop_or_office", "land_only", "unrela
 class OutOfScope(BaseModel):
     reason: OutOfScopeReason = Field(
         description="residential: houses, condos, apartments; shop_or_office: shop lots, shop offices, office space; "
-                    "land_only: vacant land without a building; unrelated: not about finding property")
+                    "land_only: farmland or residential land (industrial and commercial land are in scope); "
+                    "unrelated: not about finding property")
 
 
 class SearchFilters(BaseModel):
     """Filters the buyer-side assistant can apply to published listings."""
     deal_type: Optional[DealType] = Field(None, description="'rent' for rent/lease, 'sale' to buy; omit if not said")
-    property_types: list[Literal["factory", "warehouse"]] = Field(
+    property_types: list[Literal["factory", "warehouse", "land"]] = Field(
         default_factory=list,
-        description="Any of these types; empty means both")
+        description="Any of these types; empty means all")
     location: Optional[str] = Field(None, description="Town or industrial area, partial match, e.g. 'Shah Alam'")
     state: Optional[str] = Field(None, description="Malaysian state, e.g. 'Johor'")
     min_price: Optional[float] = Field(None, ge=0)

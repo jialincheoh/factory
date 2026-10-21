@@ -254,7 +254,7 @@ def home(request: Request, conn=Depends(db.get_conn)):
     filtered = bool(request.query_params)
     page = {
         "title": f"Factories & Warehouses for Sale and Rent in Malaysia | {config.SITE_NAME}",
-        "description": "Search factories and warehouses across Malaysia by power supply, ceiling height, land size, "
+        "description": "Search factories, warehouses and industrial land across Malaysia by power supply, ceiling height, land size, "
                        "tenure and container access. Kilang dan gudang untuk dijual dan disewa.",
         "canonical": seo.absolute("/"),
         # Filter combinations are endless; keep them out of the index but let crawlers follow the links.
@@ -496,7 +496,10 @@ def uploaded_photo(name: str, request: Request, conn=Depends(db.get_conn)):
     if not row or (row["status"] != "published"
                    and str(row["real_estate_agent_id"]) != security.current_agent_id(request)):
         raise HTTPException(404)
-    return FileResponse(config.UPLOAD_DIR / name, media_type="image/jpeg")
+    data = images.load(name, conn)
+    if data is None:
+        raise HTTPException(404)
+    return Response(data, media_type="image/jpeg")
 
 
 # ------------------------------------------------------- real estate agent side
@@ -596,7 +599,7 @@ def _save_new_listing(agent_id, description: str, processed: list, result, laten
                      "VALUES (%s, %s, %s)", [listing_id, agent_id, description])
         for pos, (data, w, h) in enumerate(processed, 1):
             conn.execute("INSERT INTO listing_images (image_id, listing_id, position, file_name, width, height) "
-                         "VALUES (%s,%s,%s,%s,%s,%s)", [uuid.uuid4(), listing_id, pos, images.save(data), w, h])
+                         "VALUES (%s,%s,%s,%s,%s,%s)", [uuid.uuid4(), listing_id, pos, images.save(data, conn), w, h])
         return _store_request(conn, agent_id, listing_id, result, latency_ms, recorder)
 
 
@@ -778,7 +781,7 @@ def card_from_form(form) -> dict:
     text = lambda k, n=120: (str(form.get(k, "")).strip()[:n] or None)
     property_type = form.get("property_type")
     if property_type not in PROPERTY_TYPES:
-        raise HTTPException(400, "Factory lists factories and warehouses only. "
+        raise HTTPException(400, "Factory lists factories, warehouses and industrial or commercial land only. "
                                  "Shoplots and shop offices belong on kedai.my.")
     tenure = form.get("tenure") if form.get("tenure") in ("freehold", "leasehold") else None
     lat, lng = _opt_float(form.get("latitude"), "Latitude", -90, 90), _opt_float(form.get("longitude"), "Longitude", -180, 180)
@@ -938,7 +941,7 @@ async def regenerate(request_id: uuid.UUID, request: Request, agent_id: str = De
                          [request_id])
             names = conn.execute("SELECT file_name FROM listing_images WHERE listing_id = %s ORDER BY position",
                                  [req["listing_id"]]).fetchall()
-            photos = [(config.UPLOAD_DIR / n["file_name"]).read_bytes() for n in names]
+            photos = [images.load(n["file_name"], conn) for n in names]
             return _create_request(conn, agent_id, req["listing_id"], req["description_original"], photos, recorder)
 
     try:

@@ -110,6 +110,12 @@ def test_full_flow(agent):
     assert TestClient(app).get(f"/uploads/{name}").status_code == 404
     assert client.get(f"/uploads/{name}").status_code == 200
 
+    # The disk is only a cache: a restart that wipes it loses no photos.
+    original = (config.UPLOAD_DIR / name).read_bytes()
+    (config.UPLOAD_DIR / name).unlink()
+    r = client.get(f"/uploads/{name}")
+    assert r.status_code == 200 and r.content == original and (config.UPLOAD_DIR / name).exists()
+
     # 2. Review page shows the filled card, and a map pin at the town centre.
     page = client.get(review_url).text
     assert 'name="power_amps" inputmode="numeric" value="400"' in page
@@ -283,8 +289,8 @@ def test_seo_pages(warehouses):
     assert client.get("/castles-for-sale").status_code == 404
     # Empty landing pages are kept out of the index.
     assert 'content="noindex, follow"' in client.get("/warehouse-for-sale/perlis").text
-    # Factories and warehouses only: no land pages.
-    assert client.get("/land-for-sale").status_code == 404
+    # Industrial and commercial land has its own pages.
+    assert client.get("/land-for-sale").status_code == 200
 
     # Filtered views and agent pages are not indexed.
     assert 'content="noindex, follow"' in client.get("/?min_power=100").text
@@ -335,7 +341,7 @@ def test_only_factories_and_warehouses_are_listed(agent):
                     files=[("photos", ("a.jpg", jpeg_with_gps(), "image/jpeg"))], follow_redirects=False)
     review_url = r.headers["location"]
     page = client.get(review_url).text
-    assert "doesn't look like a factory or warehouse" in page
+    assert "doesn't look like a factory, warehouse or industrial land" in page
     cand_id = re.search(r'name="choice" value="([0-9a-f-]{36})"', page)[1]
     r = client.post(review_url.replace("/agent/requests/", "/agent/requests/") + "/publish", data={
         "csrf": token, "choice": cand_id, f"headline_{cand_id}": "h", f"body_{cand_id}": "b",
@@ -395,7 +401,7 @@ def test_model_calls_logged_and_contact_details_masked(agent):
 
 def test_out_of_scope_search_is_declined():
     r = TestClient(app).post("/api/chat", json={"messages": [{"role": "user", "content": "3 bedroom condo in Bangsar"}]})
-    assert r.status_code == 200 and "factories and warehouses only" in r.json()["reply"] and "count" not in r.json()
+    assert r.status_code == 200 and "no homes here" in r.json()["reply"] and "count" not in r.json()
     assert db_one("SELECT declined, result_count FROM search_events ORDER BY search_id DESC LIMIT 1") == (
         "residential", None)
     r = TestClient(app).post("/api/chat", json={"messages": [{"role": "user", "content": "factory with office in Senai"}]})

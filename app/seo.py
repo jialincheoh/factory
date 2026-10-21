@@ -12,6 +12,8 @@ LANDING = {
     "factory-for-rent": (["factory"], "rent", "Factories for rent", "Kilang untuk disewa"),
     "warehouse-for-sale": (["warehouse"], "sale", "Warehouses for sale", "Gudang untuk dijual"),
     "warehouse-for-rent": (["warehouse"], "rent", "Warehouses for rent", "Gudang untuk disewa"),
+    "land-for-sale": (["land"], "sale", "Industrial and commercial land for sale", "Tanah untuk dijual"),
+    "land-for-rent": (["land"], "rent", "Industrial and commercial land for rent", "Tanah untuk disewa"),
 }
 
 

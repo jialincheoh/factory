@@ -39,8 +39,26 @@ def process_upload(raw: bytes) -> tuple[bytes, int, int]:
     return out.getvalue(), img.width, img.height
 
 
-def save(data: bytes) -> str:
+def save(data: bytes, conn=None) -> str:
+    """Write the photo to UPLOAD_DIR and, given a connection, to the database too.
+    UPLOAD_DIR is only a cache: on hosts with an ephemeral disk it is wiped on restart."""
     config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     name = f"{uuid.uuid4().hex}.jpg"
     (config.UPLOAD_DIR / name).write_bytes(data)
+    if conn is not None:
+        conn.execute("INSERT INTO image_blobs (file_name, data) VALUES (%s, %s)", [name, data])
     return name
+
+
+def load(name: str, conn) -> bytes | None:
+    """The photo's bytes from the disk cache, else from the database (re-filling the cache)."""
+    path = config.UPLOAD_DIR / name
+    if path.exists():
+        return path.read_bytes()
+    row = conn.execute("SELECT data FROM image_blobs WHERE file_name = %s", [name]).fetchone()
+    if not row:
+        return None
+    data = bytes(row["data"])
+    config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return data
