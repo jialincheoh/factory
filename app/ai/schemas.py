@@ -8,10 +8,11 @@ from typing import Literal, Optional, get_args
 
 from pydantic import BaseModel, Field
 
-# The site lists factories, warehouses and industrial or commercial land. "other" lets the model say a
-# description is something else (a shoplot, a house); such listings cannot be published.
-PropertyType = Literal["factory", "warehouse", "land", "other"]
-PROPERTY_TYPES = ("factory", "warehouse", "land")
+# The site lists factories, warehouses, industrial or commercial land, and whole commercial buildings
+# (office buildings and towers). "other" lets the model say a description is something else (a shoplot,
+# a single office unit, a house); such listings cannot be published.
+PropertyType = Literal["factory", "warehouse", "land", "commercial_building", "other"]
+PROPERTY_TYPES = ("factory", "warehouse", "land", "commercial_building")
 
 DealType = Literal["sale", "rent"]
 Tenure = Literal["freehold", "leasehold"]
@@ -24,8 +25,9 @@ AMPS_PER_KVA = 1000 / (415 * 3 ** 0.5)  # 415 V three-phase, about 1.39 A per kV
 class PropertyCard(BaseModel):
     """The structured facts shown on every ad and used by buyer search."""
     title: str = Field(description="Short factual title, e.g. 'Detached factory with 400A power in Shah Alam'")
-    property_type: PropertyType = Field(description="factory, warehouse, or land (industrial or commercial land "
-                                                    "without a building); 'other' for something else, such as a shop or a house")
+    property_type: PropertyType = Field(description="factory, warehouse, land (industrial or commercial land without a "
+                                                    "building), or commercial_building (a whole office building or tower); "
+                                                    "'other' for something else, such as a shop, a single office unit or a house")
     deal_type: DealType = Field(description="'rent' if the property is for rent or lease (sewa); otherwise 'sale' (dijual)")
     location: Optional[str] = Field(None, description="Town or industrial area, e.g. 'Shah Alam', 'Senai', only if stated")
     state: Optional[str] = Field(None, description="Malaysian state, e.g. Selangor, Johor, Penang, only if stated or obvious from the town")
@@ -134,7 +136,8 @@ OutOfScopeReason = Literal["residential", "shop_or_office", "land_only", "unrela
 
 class OutOfScope(BaseModel):
     reason: OutOfScopeReason = Field(
-        description="residential: houses, condos, apartments; shop_or_office: shop lots, shop offices, office space; "
+        description="residential: houses, condos, apartments; shop_or_office: shop lots, shop offices, single office units "
+                    "(whole office buildings are in scope); "
                     "land_only: farmland or residential land (industrial and commercial land are in scope); "
                     "unrelated: not about finding property")
 
@@ -142,7 +145,7 @@ class OutOfScope(BaseModel):
 class SearchFilters(BaseModel):
     """Filters the buyer-side assistant can apply to published listings."""
     deal_type: Optional[DealType] = Field(None, description="'rent' for rent/lease, 'sale' to buy; omit if not said")
-    property_types: list[Literal["factory", "warehouse", "land"]] = Field(
+    property_types: list[Literal["factory", "warehouse", "land", "commercial_building"]] = Field(
         default_factory=list,
         description="Any of these types; empty means all")
     location: Optional[str] = Field(None, description="Town or industrial area, partial match, e.g. 'Shah Alam'")

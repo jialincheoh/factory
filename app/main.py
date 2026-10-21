@@ -811,8 +811,8 @@ def card_from_form(form) -> dict:
     text = lambda k, n=120: (str(form.get(k, "")).strip()[:n] or None)
     property_type = form.get("property_type")
     if property_type not in PROPERTY_TYPES:
-        raise HTTPException(400, "Factory lists factories, warehouses and industrial or commercial land only. "
-                                 "Shoplots and shop offices belong on kedai.my.")
+        raise HTTPException(400, "This site lists factories, warehouses, industrial or commercial land and whole commercial buildings only. "
+                                 "Shoplots, shop offices and office units belong on kedai.my.")
     tenure = form.get("tenure") if form.get("tenure") in ("freehold", "leasehold") else None
     lat, lng = _opt_float(form.get("latitude"), "Latitude", -90, 90), _opt_float(form.get("longitude"), "Longitude", -180, 180)
     if (lat is None) != (lng is None):

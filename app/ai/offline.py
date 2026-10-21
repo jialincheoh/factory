@@ -30,6 +30,7 @@ FEATURES = {
 TYPES = [
     ("warehouse", ["warehouse", "gudang", "logistics hub"]),
     ("factory", ["factory", "factories", "kilang", "plant"]),
+    ("commercial_building", ["office building", "office tower", "commercial building", "bangunan pejabat"]),
     ("land", ["industrial land", "commercial land", "vacant land", "tanah"]),
 ]
 # Requests the site cannot serve, checked only when no factory or warehouse word is present.

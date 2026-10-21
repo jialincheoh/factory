@@ -291,6 +291,7 @@ def test_seo_pages(warehouses):
     assert 'content="noindex, follow"' in client.get("/warehouse-for-sale/perlis").text
     # Industrial and commercial land has its own pages.
     assert client.get("/land-for-sale").status_code == 200
+    assert client.get("/commercial-building-for-sale").status_code == 200
 
     # Filtered views and agent pages are not indexed.
     assert 'content="noindex, follow"' in client.get("/?min_power=100").text
@@ -341,7 +342,7 @@ def test_only_factories_and_warehouses_are_listed(agent):
                     files=[("photos", ("a.jpg", jpeg_with_gps(), "image/jpeg"))], follow_redirects=False)
     review_url = r.headers["location"]
     page = client.get(review_url).text
-    assert "doesn't look like a factory, warehouse or industrial land" in page
+    assert "doesn't look like a factory, warehouse, industrial land or a whole commercial building" in page
     cand_id = re.search(r'name="choice" value="([0-9a-f-]{36})"', page)[1]
     r = client.post(review_url.replace("/agent/requests/", "/agent/requests/") + "/publish", data={
         "csrf": token, "choice": cand_id, f"headline_{cand_id}": "h", f"body_{cand_id}": "b",
