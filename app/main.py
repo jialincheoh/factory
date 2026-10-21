@@ -761,7 +761,7 @@ def review(request_id: uuid.UUID, request: Request, agent_id: str = Depends(secu
     analysis = req["analysis"] or {}
     card = analysis.get("card") or {}
     # First map pin: the named town's centre; the agent drags it to the exact spot.
-    known = geo.lookup(card.get("location"))
+    known = geo.locate(card.get("location"), card.get("title"), req["description_original"])
     pin = {"lat": known[1], "lng": known[2], "zoom": 13} if known else \
           {"lat": geo.MALAYSIA_CENTRE[0], "lng": geo.MALAYSIA_CENTRE[1], "zoom": 6}
     if known and not card.get("state"):

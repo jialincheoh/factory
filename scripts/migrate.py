@@ -33,10 +33,25 @@ def main() -> None:
                 conn.execute("INSERT INTO schema_migrations (version, file_name) VALUES (%s, %s)",
                              [version(path), path.name])
             print(f"applied {path.name}")
+    backfill_coordinates()
     # LangGraph's checkpoint tables for the draft revision graph (its own migrations, idempotent).
     from app import revisions
     revisions.ensure_setup()
     print("database is up to date")
+
+
+def backfill_coordinates() -> None:
+    """Published listings saved without a map pin get their town's centre, so the map shows them."""
+    from app import geo
+    with psycopg.connect(config.DATABASE_URL) as conn:
+        rows = conn.execute("SELECT listing_id, location, title FROM listings "
+                            "WHERE status = 'published' AND latitude IS NULL").fetchall()
+        for listing_id, location, title in rows:
+            found = geo.locate(location, title)
+            if found:
+                conn.execute("UPDATE listings SET latitude = %s, longitude = %s WHERE listing_id = %s",
+                             [found[1], found[2], listing_id])
+                print(f"map pin set for {listing_id} ({location})")
 
 
 if __name__ == "__main__":

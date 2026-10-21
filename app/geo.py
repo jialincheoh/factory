@@ -19,6 +19,7 @@ AREAS = {
     "Kota Kemuning": ("Selangor", 3.0050, 101.5400),
     "Subang Jaya": ("Selangor", 3.0500, 101.5850),
     "Puchong": ("Selangor", 3.0250, 101.6170),
+    "Bandar Kinrara": ("Selangor", 3.0500, 101.6450),
     "Petaling Jaya": ("Selangor", 3.1073, 101.6067),
     "Sungai Buloh": ("Selangor", 3.2050, 101.5800),
     "Rawang": ("Selangor", 3.3210, 101.5770),
@@ -51,7 +52,8 @@ AREAS = {
     "Kuching": ("Sarawak", 1.5533, 110.3592),
 }
 ALIASES = {"prai": "Perai", "jb": "Johor Bahru", "pj": "Petaling Jaya", "kl": "Kuala Lumpur", "malacca": "Melaka",
-           "pulau pinang": "Penang", "georgetown": "Penang"}
+           "pulau pinang": "Penang", "georgetown": "Penang", "bk5": "Bandar Kinrara",
+           "bandar puteri puchong": "Puchong", "bandar puchong jaya": "Puchong"}
 
 MALAYSIA_CENTRE = (4.2, 102.0)
 
@@ -62,9 +64,19 @@ def lookup(name: str | None):
         return None
     key = name.strip().lower()
     key = ALIASES.get(key, key).lower()
-    for area, value in AREAS.items():
+    # Exact name first, then the longest known name inside it ("Bandar Kinrara, Puchong" is Bandar Kinrara).
+    for area in sorted(AREAS, key=lambda a: (a.lower() != key, -len(a))):
         if area.lower() == key or area.lower() in key:
-            return value
+            return AREAS[area]
+    return None
+
+
+def locate(*texts: str | None):
+    """(state, lat, lng) for the first text that names a known town, or None."""
+    for text in texts:
+        found = lookup(text) or lookup(find_area(text or ""))
+        if found:
+            return found
     return None
 
 

@@ -723,3 +723,22 @@ def test_agent_profile_shows_name_and_registration_on_listings(agent):
     assert "Listed by Grace Lin (PEA 9999)" in page
     r = TestClient(app).post(f"/api/listings/{lid}/phone", headers={"x-requested-with": "fetch"})
     assert r.json() == {"phone": "017-000 0000", "name": "Grace Lin"}
+
+
+def test_listings_without_a_pin_get_their_towns_centre(agent):
+    from app import geo
+    from scripts import migrate
+    assert geo.lookup("Bandar Kinrara") == geo.AREAS["Bandar Kinrara"]
+    assert geo.lookup("Bandar Kinrara, Puchong") == geo.AREAS["Bandar Kinrara"]  # the more specific name wins
+    assert geo.locate("Somewhere new", "Commercial land in Bandar Puteri Puchong") == geo.AREAS["Puchong"]
+    assert geo.locate(None, "Land in Atlantis") is None
+
+    lid = uuid.uuid4()
+    with psycopg.connect(config.DATABASE_URL) as conn:
+        conn.execute("INSERT INTO listings (listing_id, real_estate_agent_id, status, title, property_type, deal_type, "
+                     "location, state, price_listed) VALUES (%s,%s,'published','Land in BK5','land','sale',"
+                     "'Bandar Kinrara','Selangor',1000000)", [lid, agent["id"]])
+    migrate.backfill_coordinates()
+    with psycopg.connect(config.DATABASE_URL) as conn:
+        lat, lng = conn.execute("SELECT latitude, longitude FROM listings WHERE listing_id = %s", [lid]).fetchone()
+    assert (float(lat), float(lng)) == geo.AREAS["Bandar Kinrara"][1:]
