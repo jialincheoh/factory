@@ -253,9 +253,9 @@ def home(request: Request, conn=Depends(db.get_conn)):
     payload = results_payload(listings)
     filtered = bool(request.query_params)
     page = {
-        "title": f"Factories & Warehouses for Sale and Rent in Malaysia | {config.SITE_NAME}",
+        "title": f"Factories, Warehouses & Land for Sale and Rent in Malaysia | {config.SITE_NAME}",
         "description": "Search factories, warehouses and industrial land across Malaysia by power supply, ceiling height, land size, "
-                       "tenure and container access. Kilang dan gudang untuk dijual dan disewa.",
+                       "tenure and container access. Kilang, gudang dan tanah untuk dijual dan disewa.",
         "canonical": seo.absolute("/"),
         # Filter combinations are endless; keep them out of the index but let crawlers follow the links.
         "robots": "noindex, follow" if filtered else "index, follow",
