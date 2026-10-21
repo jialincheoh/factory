@@ -61,7 +61,7 @@
     <aside class="side">
       <div class="property-card">
         <p class="price">{{ listing | price_label }}</p>
-        <p class="muted small">Listed by a registered agent. The phone number is shown when you ask for it.</p>
+        <p class="muted small">Listed by {{ agent.display_name }}{% if agent.registration_no %} ({{ agent.registration_no }}){% else %}, a registered agent{% endif %}. The phone number is shown when you ask for it.</p>
         <button class="button wide" id="reveal" data-listing="{{ listing.listing_id }}" type="button">Show phone number</button>
         <p id="phone" class="phone" hidden></p>
       </div>

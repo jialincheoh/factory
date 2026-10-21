@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="narrow">
+  <h1>My profile</h1>
+  <p class="muted">Buyers see your name and registration number on every listing, and your phone number when they ask for it.</p>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  {% if saved %}<p class="notice">Saved.</p>{% endif %}
+  <form method="post" action="/agent/profile" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Name shown to buyers <input name="display_name" value="{{ agent.display_name or '' }}" required maxlength="80"></label>
+    <label>Phone number <input name="phone" type="tel" value="{{ agent.phone or '' }}" maxlength="30" placeholder="e.g. 012-345 6789"></label>
+    <label>Registration number (REN / PEA / E) <input name="registration_no" value="{{ agent.registration_no or '' }}" maxlength="40" placeholder="e.g. PEA 1234"></label>
+    <button class="button" type="submit">Save</button>
+  </form>
+</div>
+{% endblock %}

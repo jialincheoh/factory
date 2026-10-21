@@ -699,3 +699,27 @@ def test_eval_dataset_export_and_local_run():
     assert set(summary) == {"card_accuracy", "drafts_supported", "format_ok", "closeness_to_kept", "no_contact_details"}
     assert summary["card_accuracy"] is not None and 0 <= summary["card_accuracy"] <= 1
     assert summary["no_contact_details"] == 1.0
+
+
+def test_agent_profile_shows_name_and_registration_on_listings(agent):
+    client = TestClient(app)
+    token = sign_in(client, agent)
+    r = client.post("/agent/profile", data={"csrf": token, "display_name": "Grace Lin", "phone": "017-000 0000",
+                                            "registration_no": "PEA 9999"})
+    assert r.status_code == 200 and "Saved." in r.text and 'value="PEA 9999"' in r.text
+    assert client.post("/agent/profile", data={"csrf": token, "display_name": "", "phone": ""}).status_code == 400
+    assert client.post("/agent/profile", data={"csrf": token, "display_name": "G", "phone": "call me"}).status_code == 400
+    r = TestClient(app).post("/agent/profile", data={"display_name": "x"}, follow_redirects=False)
+    assert r.status_code in (303, 401, 403)  # signed-out visitors cannot change a profile
+
+    lid = uuid.uuid4()
+    with psycopg.connect(config.DATABASE_URL) as conn:
+        conn.execute("INSERT INTO listings (listing_id, real_estate_agent_id, status, title, property_type, deal_type, "
+                     "location, state, price_listed) VALUES (%s,%s,'published','Land in Puchong','land','sale',"
+                     "'Puchong','Selangor',1000000)", [lid, agent["id"]])
+        conn.execute("INSERT INTO published_ads (ad_id, listing_id, channel, published_at, headline, ad_text) "
+                     "VALUES (%s,%s,'own_portal',now(),'h','b')", [uuid.uuid4(), lid])
+    page = TestClient(app).get(f"/listings/{lid}/land-in-puchong").text
+    assert "Listed by Grace Lin (PEA 9999)" in page
+    r = TestClient(app).post(f"/api/listings/{lid}/phone", headers={"x-requested-with": "fetch"})
+    assert r.json() == {"phone": "017-000 0000", "name": "Grace Lin"}

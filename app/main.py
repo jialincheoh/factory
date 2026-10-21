@@ -461,7 +461,10 @@ def listing_page(listing_id: uuid.UUID, slug: str, request: Request, conn=Depend
         "og_type": "article",
         "jsonld": [seo.listing_jsonld(listing, [p["file_name"] for p in photos]), seo.breadcrumbs(crumbs)],
     }
-    return render(request, "portal/listing.html", listing=listing, photos=photos, page=page, crumbs=crumbs)
+    agent = conn.execute("SELECT a.display_name, a.registration_no FROM listings l JOIN real_estate_agents a "
+                         "USING (real_estate_agent_id) WHERE l.listing_id = %s", [listing_id]).fetchone()
+    return render(request, "portal/listing.html", listing=listing, photos=photos, page=page, crumbs=crumbs,
+                  agent=agent)
 
 
 @app.post("/api/listings/{listing_id}/phone")
@@ -550,6 +553,33 @@ def dashboard(request: Request, agent_id: str = Depends(security.require_agent),
         WHERE l.real_estate_agent_id = %s
         GROUP BY l.listing_id ORDER BY l.updated_at DESC""", [agent_id]).fetchall()
     return render(request, "agent/dashboard.html", agent=agent, listings=listings)
+
+
+def _agent_profile(conn, agent_id):
+    return conn.execute("SELECT display_name, phone, registration_no FROM real_estate_agents "
+                        "WHERE real_estate_agent_id = %s", [agent_id]).fetchone()
+
+
+@app.get("/agent/profile", response_class=HTMLResponse)
+def profile_form(request: Request, agent_id: str = Depends(security.require_agent), conn=Depends(db.get_conn)):
+    return render(request, "agent/profile.html", agent=_agent_profile(conn, agent_id))
+
+
+@app.post("/agent/profile", response_class=HTMLResponse)
+def save_profile(request: Request, agent_id: str = Depends(security.require_agent),
+                 display_name: str = Form(""), phone: str = Form(""), registration_no: str = Form(""),
+                 csrf: str = Form(None), conn=Depends(db.get_conn)):
+    security.check_csrf(request, csrf)
+    name, phone, reg = display_name.strip()[:80], phone.strip()[:30], registration_no.strip()[:40]
+    if not name:
+        agent = {"display_name": name, "phone": phone, "registration_no": reg}
+        return render(request, "agent/profile.html", 400, agent=agent, error="Enter the name buyers should see.")
+    if phone and not re.fullmatch(r"[+0-9][0-9 ()-]{6,29}", phone):
+        agent = {"display_name": name, "phone": phone, "registration_no": reg}
+        return render(request, "agent/profile.html", 400, agent=agent, error="Enter the phone number in digits, e.g. 012-345 6789.")
+    conn.execute("UPDATE real_estate_agents SET display_name = %s, phone = %s, registration_no = %s "
+                 "WHERE real_estate_agent_id = %s", [name, phone or None, reg or None, agent_id])
+    return render(request, "agent/profile.html", agent=_agent_profile(conn, agent_id), saved=True)
 
 
 @app.get("/agent/new", response_class=HTMLResponse)
