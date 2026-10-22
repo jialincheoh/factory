@@ -4,6 +4,7 @@ Used to drop a first map pin when an agent names a town, and by the offline
 search rules to recognise place names. Agents move the pin to the exact spot
 on the review page. Coordinates are town centres, accurate to a few km.
 """
+import re
 
 STATES = [
     "Johor", "Kedah", "Kelantan", "Kuala Lumpur", "Labuan", "Melaka", "Negeri Sembilan", "Pahang", "Penang",
@@ -13,6 +14,7 @@ STATES = [
 # name: (state, latitude, longitude)
 AREAS = {
     "Shah Alam": ("Selangor", 3.0733, 101.5185),
+    "Glenmarie": ("Selangor", 3.0935, 101.5790),
     "Klang": ("Selangor", 3.0449, 101.4456),
     "Port Klang": ("Selangor", 2.9990, 101.3920),
     "Bukit Raja": ("Selangor", 3.0870, 101.4600),
@@ -53,7 +55,9 @@ AREAS = {
 }
 ALIASES = {"prai": "Perai", "jb": "Johor Bahru", "pj": "Petaling Jaya", "kl": "Kuala Lumpur", "malacca": "Melaka",
            "pulau pinang": "Penang", "georgetown": "Penang", "bk5": "Bandar Kinrara",
-           "bandar puteri puchong": "Puchong", "bandar puchong jaya": "Puchong"}
+           "bandar puteri puchong": "Puchong", "bandar puchong jaya": "Puchong",
+           "hicom glenmarie": "Glenmarie", "temasya glenmarie": "Glenmarie", "temasya industrial park": "Glenmarie",
+           "novus business park": "Glenmarie", "novus industrial park": "Glenmarie"}
 
 MALAYSIA_CENTRE = (4.2, 102.0)
 
@@ -64,11 +68,16 @@ def lookup(name: str | None):
         return None
     key = name.strip().lower()
     key = ALIASES.get(key, key).lower()
-    # Exact name first, then the longest known name inside it ("Bandar Kinrara, Puchong" is Bandar Kinrara).
-    for area in sorted(AREAS, key=lambda a: (a.lower() != key, -len(a))):
-        if area.lower() == key or area.lower() in key:
-            return AREAS[area]
-    return None
+    # Exact name, else the known name that appears first ("Temasya Glenmarie, Shah Alam" is Glenmarie),
+    # longest first where two start together. Aliases match whole words only ("kl" is not in "klang").
+    for alias, area in ALIASES.items():
+        if area in AREAS:
+            key = re.sub(rf"\b{re.escape(alias)}\b", area.lower(), key)
+    hits = [a for a in AREAS if a.lower() in key]
+    if not hits:
+        return None
+    exact = [a for a in hits if a.lower() == key]
+    return AREAS[(exact or sorted(hits, key=lambda a: (key.index(a.lower()), -len(a))))[0]]
 
 
 def locate(*texts: str | None):

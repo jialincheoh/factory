@@ -777,3 +777,15 @@ def test_agent_features_a_listing_on_the_homepage(agent):
 
     client.post(f"/agent/listings/{lid}/feature", data={"csrf": token})  # toggles back off
     assert "Featured listings" not in TestClient(app).get("/").text
+
+
+def test_glenmarie_is_recognised_and_specific_places_win():
+    from app import geo
+    assert geo.lookup("Temasya Glenmarie, Shah Alam") == geo.AREAS["Glenmarie"]
+    assert geo.lookup("Hicom Glenmarie") == geo.AREAS["Glenmarie"]
+    assert geo.lookup("Novus Business Park") == geo.AREAS["Glenmarie"]
+    assert geo.lookup("Shah Alam") == geo.AREAS["Shah Alam"]
+    assert geo.lookup("Klang") == geo.AREAS["Klang"]          # the "kl" alias must not fire inside a word
+    assert geo.lookup("Port Klang") == geo.AREAS["Port Klang"]
+    assert geo.lookup("KL") == geo.AREAS["Kuala Lumpur"]
+    assert TestClient(app).get("/factory-for-rent/glenmarie").status_code == 200
