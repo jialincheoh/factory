@@ -14,6 +14,9 @@ changes can be compared with numbers.
     python -m scripts.eval_ads run --data eval/ads.jsonl          # locally, prints a table
     python -m scripts.eval_ads run --langsmith factory-ads        # as a LangSmith experiment
 
+    # Both on the server, where the database and photos are (scripts/boot_jobs.py starts this)
+    python -m scripts.eval_ads job factory-ads --confirm-privacy [--run]
+
 Pushing to LangSmith sends agents' (masked) descriptions to LangSmith, which the
 privacy notice does not mention yet: update /privacy, or use only consented or
 demo data, before using --push or --langsmith with real agents' listings.
@@ -28,7 +31,7 @@ import time
 from difflib import SequenceMatcher
 from pathlib import Path
 
-from app import config, db
+from app import config, db, images
 from app.ai import get_assistant, llm, pii
 
 CARD_FIELDS = {  # reference column on listings -> field on the model's PropertyCard
@@ -76,12 +79,18 @@ def _plain(v):
 # ------------------------------------------------------------------ target
 
 def target(inputs: dict) -> dict:
-    """Run the configured ad writer on one example. Photos are read locally if they still exist."""
+    """Run the configured ad writer on one example. Photos come from this server's disk cache or database;
+    where neither has them (e.g. a laptop without the database), the example runs on the description alone."""
     photos = []
-    for name in inputs.get("photos") or []:
-        path = config.UPLOAD_DIR / name
-        if path.exists():
-            photos.append((path.read_bytes(), "image/jpeg"))
+    try:
+        with db.connect() as conn:
+            for name in inputs.get("photos") or []:
+                data = images.load(name, conn)
+                if data:
+                    photos.append((data, "image/jpeg"))
+    except Exception:  # no database reachable from here
+        photos = [((config.UPLOAD_DIR / n).read_bytes(), "image/jpeg") for n in inputs.get("photos") or []
+                  if (config.UPLOAD_DIR / n).exists()]
     started = time.monotonic()
     result = get_assistant().write_ads(inputs["description"], photos, inputs.get("n_drafts", 3))
     return {"card": result.analysis.card.model_dump(), "drafts": [d.model_dump() for d in result.analysis.drafts],
@@ -166,6 +175,22 @@ def run_local(examples: list[dict]) -> dict[str, float | None]:
     return summary
 
 
+def push_new(examples: list[dict], dataset_name: str) -> None:
+    """Add the examples a LangSmith dataset does not have yet (matched on request_id), so reruns don't duplicate."""
+    from langsmith import Client
+    client = Client()
+    if client.has_dataset(dataset_name=dataset_name):
+        dataset = client.read_dataset(dataset_name=dataset_name)
+        have = {(x.metadata or {}).get("request_id") for x in client.list_examples(dataset_id=dataset.id)}
+    else:
+        dataset = client.create_dataset(dataset_name, description="Factory ad writer: agent decisions")
+        have = set()
+    new = [x for x in examples if x["metadata"]["request_id"] not in have]
+    if new:
+        client.create_examples(dataset_id=dataset.id, examples=new)
+    print(f"LangSmith dataset {dataset_name}: {len(new)} new, {len(have)} already there", file=sys.stderr)
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -179,7 +204,25 @@ def main() -> None:
     src.add_argument("--data", type=Path, help="local JSON lines from export")
     src.add_argument("--langsmith", metavar="DATASET", help="run as a LangSmith experiment on this dataset")
     r.add_argument("--limit", type=int)
+    j = sub.add_parser("job", help="on the server: push new examples to a LangSmith dataset, optionally run it")
+    j.add_argument("dataset")
+    j.add_argument("--confirm-privacy", action="store_true")
+    j.add_argument("--run", action="store_true", help="also run a LangSmith experiment (uses model quota)")
     args = p.parse_args()
+
+    if args.cmd == "job":
+        if not args.confirm_privacy:
+            raise SystemExit("Refusing to push without --confirm-privacy (see the note at the top of this file).")
+        with db.connect() as conn:
+            examples = export_examples(conn)
+        push_new(examples, args.dataset)
+        if args.run:
+            from langsmith import evaluate
+            results = evaluate(target, data=args.dataset, evaluators=EVALUATORS,
+                               experiment_prefix=f"{config.LLM_MODEL}-{llm.PROMPT_VERSION}".replace(":", "-"),
+                               max_concurrency=1, metadata={"model": config.LLM_MODEL, "prompt": llm.PROMPT_VERSION})
+            print(f"LangSmith experiment: {results.experiment_name}", file=sys.stderr)
+        return
 
     if args.cmd == "export":
         with db.connect() as conn:
@@ -191,12 +234,7 @@ def main() -> None:
         if args.push:
             if not args.confirm_privacy:
                 raise SystemExit("Refusing to push without --confirm-privacy (see the note at the top of this file).")
-            from langsmith import Client
-            client = Client()
-            dataset = (client.read_dataset(dataset_name=args.push) if client.has_dataset(dataset_name=args.push)
-                       else client.create_dataset(args.push, description="Factory ad writer: agent decisions"))
-            client.create_examples(dataset_id=dataset.id, examples=examples)
-            print(f"pushed to LangSmith dataset {args.push}", file=sys.stderr)
+            push_new(examples, args.push)
         return
 
     experiment = f"{config.LLM_MODEL}-{llm.PROMPT_VERSION}".replace(":", "-")

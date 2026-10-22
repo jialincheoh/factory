@@ -218,3 +218,33 @@ def test_invalid_structured_output_is_recorded_as_failure():
     recorder.calls.append({"step": "check_drafts", "ok": True, "error": None})
     recorder.format_failure("check_drafts")
     assert recorder.calls[0] == {"step": "check_drafts", "ok": False, "error": "InvalidStructuredOutput"}
+
+
+def test_eval_push_adds_only_new_examples(monkeypatch):
+    import types
+    from scripts import eval_ads
+
+    class FakeClient:
+        datasets, examples = {}, []
+
+        def has_dataset(self, dataset_name):
+            return dataset_name in self.datasets
+
+        def read_dataset(self, dataset_name):
+            return self.datasets[dataset_name]
+
+        def create_dataset(self, name, description=""):
+            self.datasets[name] = types.SimpleNamespace(id=name)
+            return self.datasets[name]
+
+        def list_examples(self, dataset_id):
+            return [types.SimpleNamespace(metadata=x["metadata"]) for x in self.examples]
+
+        def create_examples(self, dataset_id, examples):
+            self.examples.extend(examples)
+
+    monkeypatch.setitem(__import__("sys").modules, "langsmith", types.SimpleNamespace(Client=FakeClient))
+    ex = lambda rid: {"inputs": {}, "outputs": {}, "metadata": {"request_id": rid}}
+    eval_ads.push_new([ex("a"), ex("b")], "ds")
+    eval_ads.push_new([ex("a"), ex("b"), ex("c")], "ds")  # a rerun after one more listing
+    assert [x["metadata"]["request_id"] for x in FakeClient.examples] == ["a", "b", "c"]
