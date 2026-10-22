@@ -1,4 +1,5 @@
-/* Corporate theme: cool grey canvas, white surfaces, navy chrome, one business blue.
+/* Corporate theme: about 70% white/grey, 25% navy, 5% accent. Blue is for actions only
+   (buttons, links, map pins); a little gold marks rentals and section labels.
    (Token names kept from the first theme: --brass is now the blue accent.) */
 :root {
   --bg: #f3f5f8;            /* cool light grey */
@@ -14,6 +15,8 @@
   --chrome: #0b2a4a;        /* header, hero band, footer */
   --chrome-ink: #ffffff;
   --chrome-muted: #b8c4d6;
+  --gold: #9a6f1e;          /* warm accent on light surfaces (4.5:1 on white): rent badge, labels */
+  --gold-on-dark: #d9a94a;  /* the same accent on navy (6.7:1) */
   --shadow: 0 1px 2px rgba(16,33,61,.06), 0 6px 18px rgba(16,33,61,.06);
   --warn-bg: #fdf4e3; --warn: #8a5a00; --info-bg: #eaf1fb; --info: #1f4f8a; --err: #b42318;
   --radius: 8px;
@@ -27,7 +30,7 @@
   :root {
     --bg: #0d1522; --surface: #142033; --text: #e8edf5; --muted: #9aa8bd; --line: #24324a; --soft: #1a283e;
     --accent: #8fb8ee; --accent-ink: #0d1522; --brass: #6ea4ea; --brass-soft: #18304f;
-    --chrome: #08101b; --chrome-ink: #ffffff; --chrome-muted: #9aa8bd;
+    --chrome: #08101b; --chrome-ink: #ffffff; --chrome-muted: #9aa8bd; --gold: #d9a94a; --gold-on-dark: #d9a94a;
     --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.25);
     --warn-bg: #2d2412; --warn: #e9c27f; --info-bg: #15263d; --info: #a9c8f0; --err: #f0a3a3;
   }
@@ -312,10 +315,10 @@ label { letter-spacing: .04em; font-size: .74rem; }
 
 /* hero: a full-width navy band behind the search */
 .hero { max-width: none; margin: 0 calc(50% - 50vw) 40px; padding: 80px 28px 64px;
-  background: linear-gradient(135deg, #0b2a4a 0%, #123c69 60%, #1f5fae 100%); color: #fff; }
+  background: linear-gradient(180deg, #0b2a4a 0%, #0a2340 100%); color: #fff; }
 .hero > * { max-width: 860px; margin-left: auto; margin-right: auto; }
 .hero h1 { color: #fff; }
-.hero .kicker { color: #9fc3f0; letter-spacing: .2em; font-weight: 600; }
+.hero .kicker { color: var(--gold-on-dark); letter-spacing: .2em; font-weight: 600; }
 .hero .lede, .hero .hint { color: #c9d6e8; }
 .hero .hint a { color: #fff; }
 .chat-form { border: 0; box-shadow: 0 10px 30px rgba(0,0,0,.25); border-radius: var(--radius); overflow: hidden; }
@@ -334,11 +337,11 @@ label { letter-spacing: .04em; font-size: .74rem; }
 .card:hover img { transform: none; }
 .card-body { padding: 18px 20px 20px; }
 .card h3 { font-size: 1.12rem; }
-.card:hover h3 { text-decoration: none; color: var(--brass); }
-.facts { color: var(--brass); font-weight: 600; letter-spacing: .08em; }
+.card:hover h3 { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; color: var(--text); }
+.facts { color: var(--muted); font-weight: 600; letter-spacing: .08em; }
 .price { font-weight: 700; }
 .badge { border-radius: 4px; letter-spacing: .1em; }
-.badge.rent { background: var(--brass); color: #fff; }
+.badge.rent { background: var(--gold); color: #fff; }
 .tags li, .filters span { border-radius: 999px; background: var(--soft); border-color: transparent; letter-spacing: .04em; }
 
 /* listing page */
@@ -346,7 +349,7 @@ label { letter-spacing: .04em; font-size: .74rem; }
 .spec-table dd { font-weight: 500; }
 .viewer-stage, .mini-map, .results-map { border-radius: var(--radius); }
 .mini-map, .results-map { filter: none; }
-.phone { font-weight: 700; color: var(--brass); }
+.phone { font-weight: 700; color: var(--text); }
 
 /* agent side */
 .panel, .draft { border-radius: var(--radius); }
@@ -354,7 +357,7 @@ label { letter-spacing: .04em; font-size: .74rem; }
 
 /* footer */
 .footer { background: var(--chrome); color: var(--chrome-muted); border-top: 0; margin-top: 64px; }
-.footer h2 { color: #9fc3f0; }
+.footer h2 { color: var(--gold-on-dark); }
 .footer-links a, .footer .muted a { color: #dfe7f2; }
 .footer-links a:hover { color: #fff; }
 .footer-links.main { border-top-color: rgba(255,255,255,.12); }
@@ -364,3 +367,6 @@ label { letter-spacing: .04em; font-size: .74rem; }
 .topbar-inner { padding: 14px 28px; }
 .topbar nav { gap: 22px; font-size: .86rem; }
 @media (max-width: 1100px) { .topbar nav { gap: 16px; font-size: .82rem; } }
+.eyebrow, .kicker:not(.hero .kicker), .draft-label { color: var(--gold); }
+.toggle.active { border-bottom-color: var(--accent); }
+.thumb.active { border-bottom-color: var(--accent); }
