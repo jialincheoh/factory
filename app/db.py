@@ -64,7 +64,7 @@ def search_listings(conn, f: SearchFilters, limit: int = 60) -> list[dict]:
         add("l.property_type = ANY(%s)", sorted(set(f.property_types)))
     if f.location:
         pat = f"%{_escape_like(f.location)}%"
-        add("(l.location ILIKE %s OR l.state ILIKE %s)", pat, pat)
+        add("(l.location ILIKE %s OR l.state ILIKE %s OR l.title ILIKE %s)", pat, pat, pat)  # titles name the estate
     if f.state:
         add("l.state ILIKE %s", _escape_like(f.state))
     if f.min_price is not None:

@@ -1040,7 +1040,10 @@ def sitemap(conn=Depends(db.get_conn)):
         urls.append((seo.listing_path(l), l["modified"], l["photos"] or []))
         path = seo.landing_path(l)
         if path:
-            for key in {f"/{path}"} | {f"/{path}/{seo.slugify(pl)}" for pl in (l["location"], l["state"])
+            # The listing's state, its location if that is a known place, and any known town named in the
+            # location or title ("Temasya Glenmarie, Shah Alam" belongs under Glenmarie and Shah Alam).
+            places = {l["location"], l["state"]} | geo.find_areas(f"{l['location'] or ''} {l['title'] or ''}")
+            for key in {f"/{path}"} | {f"/{path}/{seo.slugify(pl)}" for pl in places
                                          if pl and seo.place_from_slug(seo.slugify(pl))}:
                 landings[key] = max(filter(None, [landings.get(key), l["modified"]]))
     urls += [(path, modified, []) for path, modified in sorted(landings.items())]

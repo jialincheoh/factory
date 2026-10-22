@@ -101,6 +101,14 @@ def find_area(text: str) -> str | None:
     return None
 
 
+def find_areas(text: str) -> set[str]:
+    """Every known town named in free text, through aliases too ("Hicom Glenmarie, Shah Alam" names both)."""
+    low = f" {text.lower()} "
+    found = {area for area in AREAS if f" {area.lower()}" in low}
+    found |= {area for alias, area in ALIASES.items() if area in AREAS and re.search(rf"\b{re.escape(alias)}\b", low)}
+    return found
+
+
 def find_state(text: str) -> str | None:
     low = text.lower()
     for state in STATES:

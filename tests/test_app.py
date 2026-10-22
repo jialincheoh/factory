@@ -789,3 +789,16 @@ def test_glenmarie_is_recognised_and_specific_places_win():
     assert geo.lookup("Port Klang") == geo.AREAS["Port Klang"]
     assert geo.lookup("KL") == geo.AREAS["Kuala Lumpur"]
     assert TestClient(app).get("/factory-for-rent/glenmarie").status_code == 200
+
+
+def test_area_pages_find_listings_by_location_or_title(agent):
+    lid = uuid.uuid4()
+    with psycopg.connect(config.DATABASE_URL) as conn:
+        conn.execute("INSERT INTO listings (listing_id, real_estate_agent_id, status, title, property_type, deal_type, "
+                     "location, state, price_listed) VALUES (%s,%s,'published','4-storey factory in Hicom Glenmarie',"
+                     "'factory','rent','Shah Alam','Selangor',33000)", [lid, agent["id"]])
+        conn.execute("INSERT INTO published_ads (ad_id, listing_id, channel, published_at, headline, ad_text) "
+                     "VALUES (%s,%s,'own_portal',now(),'h','b')", [uuid.uuid4(), lid])
+    assert "4-storey factory in Hicom Glenmarie" in TestClient(app).get("/factory-for-rent/glenmarie").text
+    sitemap = TestClient(app).get("/sitemap.xml").text
+    assert "/factory-for-rent/glenmarie</loc>" in sitemap and "/factory-for-rent/shah-alam</loc>" in sitemap
