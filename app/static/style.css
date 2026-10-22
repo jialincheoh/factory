@@ -370,3 +370,11 @@ label { letter-spacing: .04em; font-size: .74rem; }
 .eyebrow, .kicker:not(.hero .kicker), .draft-label { color: var(--gold); }
 .toggle.active { border-bottom-color: var(--accent); }
 .thumb.active { border-bottom-color: var(--accent); }
+
+/* featured listings: two columns between the map and the full list */
+.featured { margin: 0 0 56px; }
+.featured h2, .latest-heading { font-size: 1.5rem; margin: 0 0 20px; }
+.featured-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.featured .card { border-top: 3px solid var(--gold); }
+.featured .card img, .featured .noimg { aspect-ratio: 16 / 9; }
+@media (max-width: 640px) { .featured-grid { grid-template-columns: 1fr; } }

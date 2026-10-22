@@ -6,7 +6,7 @@
 </div>
 {% if listings %}
 <table class="table">
-  <thead><tr><th>Listing</th><th>Status</th><th>Price</th><th class="num">Shown</th><th class="num">Opened</th><th class="num">Phone reveals</th></tr></thead>
+  <thead><tr><th>Listing</th><th>Status</th><th>Price</th><th class="num">Shown</th><th class="num">Opened</th><th class="num">Phone reveals</th><th>Homepage</th></tr></thead>
   <tbody>
   {% for l in listings %}
     <tr>
@@ -17,6 +17,10 @@
       <td><span class="status {{ l.status }}">{{ l.status }}</span></td>
       <td>{{ l | price_label if l.status == "published" else "–" }}</td>
       <td class="num">{{ l.impressions }}</td><td class="num">{{ l.clicks }}</td><td class="num">{{ l.phone_reveals }}</td>
+      <td>{% if l.status == 'published' %}<form method="post" action="/agent/listings/{{ l.listing_id }}/feature" class="inline">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="linklike" type="submit">{{ "Unfeature" if l.featured_at else "Feature" }}</button>
+      </form>{% if l.featured_at %} <span class="status published">Featured</span>{% endif %}{% endif %}</td>
     </tr>
   {% endfor %}
   </tbody>

@@ -749,3 +749,31 @@ def test_listings_without_a_pin_get_their_towns_centre(agent):
 def test_footer_has_no_copyright_line():
     page = TestClient(app).get("/privacy").text
     assert "©" not in page
+
+
+def test_agent_features_a_listing_on_the_homepage(agent):
+    lid = uuid.uuid4()
+    with psycopg.connect(config.DATABASE_URL) as conn:
+        conn.execute("UPDATE listings SET featured_at = NULL")
+        conn.execute("INSERT INTO listings (listing_id, real_estate_agent_id, status, title, property_type, deal_type, "
+                     "location, state, price_listed) VALUES (%s,%s,'published','Featured land in Kinrara','land','sale',"
+                     "'Bandar Kinrara','Selangor',2000000)", [lid, agent["id"]])
+        conn.execute("INSERT INTO published_ads (ad_id, listing_id, channel, published_at, headline, ad_text) "
+                     "VALUES (%s,%s,'own_portal',now(),'h','b')", [uuid.uuid4(), lid])
+    assert "Featured listings" not in TestClient(app).get("/").text
+
+    client = TestClient(app)
+    token = sign_in(client, agent)
+    assert client.post(f"/agent/listings/{lid}/feature", data={"csrf": token}, follow_redirects=False).status_code == 303
+    home = TestClient(app).get("/").text
+    featured = home[home.index('id="featured-heading"'):home.index('class="latest-heading"')]
+    assert "Featured land in Kinrara" in featured
+    assert "Featured listings" not in TestClient(app).get("/?type=land").text  # filtered views skip the section
+    assert "Unfeature" in client.get("/agent").text
+
+    # Signed-out visitors and other agents cannot feature it.
+    assert TestClient(app).post(f"/agent/listings/{lid}/feature", data={}, follow_redirects=False).status_code in (303, 401, 403)
+    assert client.post(f"/agent/listings/{uuid.uuid4()}/feature", data={"csrf": token}).status_code == 404
+
+    client.post(f"/agent/listings/{lid}/feature", data={"csrf": token})  # toggles back off
+    assert "Featured listings" not in TestClient(app).get("/").text

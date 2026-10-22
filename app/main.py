@@ -263,8 +263,9 @@ def home(request: Request, conn=Depends(db.get_conn)):
         "robots": "noindex, follow" if filtered else "index, follow",
         "jsonld": [seo.site_jsonld(), seo.organization_jsonld()],
     }
+    featured = [] if filtered else db.featured_listings(conn)
     return render(request, "portal/home.html", listings=listings, form=form_from_filters(filters),
-                  filtered=filtered, markers=payload["markers"], page=page)
+                  filtered=filtered, markers=payload["markers"], page=page, featured=featured)
 
 
 async def _json_body(request: Request) -> dict:
@@ -543,7 +544,7 @@ def dashboard(request: Request, agent_id: str = Depends(security.require_agent),
     agent = conn.execute("SELECT display_name FROM real_estate_agents WHERE real_estate_agent_id = %s",
                          [agent_id]).fetchone()
     listings = conn.execute("""
-        SELECT l.listing_id, l.title, l.status, l.deal_type, l.price_listed AS price, l.updated_at,
+        SELECT l.listing_id, l.title, l.status, l.deal_type, l.price_listed AS price, l.updated_at, l.featured_at,
                (SELECT request_id FROM generation_requests g WHERE g.listing_id = l.listing_id
                  ORDER BY created_at DESC LIMIT 1) AS latest_request,
                count(e.*) FILTER (WHERE e.event_type = 'impression')   AS impressions,
@@ -582,6 +583,19 @@ def save_profile(request: Request, agent_id: str = Depends(security.require_agen
     conn.execute("UPDATE real_estate_agents SET display_name = %s, phone = %s, registration_no = %s "
                  "WHERE real_estate_agent_id = %s", [name, phone or None, reg or None, agent_id])
     return render(request, "agent/profile.html", agent=_agent_profile(conn, agent_id), saved=True)
+
+
+@app.post("/agent/listings/{listing_id}/feature")
+def toggle_featured(listing_id: uuid.UUID, request: Request, agent_id: str = Depends(security.require_agent),
+                    csrf: str = Form(None), conn=Depends(db.get_conn)):
+    """Put one of the agent's published listings in, or take it out of, the homepage's featured section."""
+    security.check_csrf(request, csrf)
+    row = conn.execute("UPDATE listings SET featured_at = CASE WHEN featured_at IS NULL THEN now() END "
+                       "WHERE listing_id = %s AND real_estate_agent_id = %s AND status = 'published' RETURNING listing_id",
+                       [listing_id, agent_id]).fetchone()
+    if not row:
+        raise HTTPException(404)
+    return RedirectResponse("/agent", status_code=303)
 
 
 @app.get("/agent/new", response_class=HTMLResponse)

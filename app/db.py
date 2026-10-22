@@ -42,6 +42,12 @@ WHERE l.status = 'published' AND l.property_type IN ('factory', 'warehouse', 'la
 """
 
 
+def featured_listings(conn, limit: int = 4) -> list[dict]:
+    """Listings the agent marked as featured, most recently featured first."""
+    return conn.execute(LISTING_CARD_SQL + " AND l.featured_at IS NOT NULL ORDER BY l.featured_at DESC LIMIT %s",
+                        [limit]).fetchall()
+
+
 def _escape_like(s: str) -> str:
     return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 

@@ -36,6 +36,13 @@
     </div>
     <div id="results-map" class="results-map" data-tiles="{{ MAP_TILES }}"></div>
     <script type="application/json" id="markers-data">{{ markers | tojson }}</script>
+    {% if featured %}
+    <section class="featured" aria-labelledby="featured-heading">
+      <h2 id="featured-heading">Featured listings</h2>
+      <div class="grid featured-grid">{% with listings = featured %}{% include "portal/_cards.html" %}{% endwith %}</div>
+    </section>
+    <h2 class="latest-heading">All listings</h2>
+    {% endif %}
     <div id="results" class="grid">{% include "portal/_cards.html" %}</div>
     {% if related_places or related_types %}
     <nav class="related" aria-label="Related searches">
