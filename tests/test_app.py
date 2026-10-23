@@ -2,7 +2,6 @@
 agent signs in, uploads photos, reviews drafts, publishes; buyer searches,
 opens the listing and reveals the phone number; every step is logged."""
 import io
-from datetime import datetime, timezone
 import json
 import re
 import uuid
