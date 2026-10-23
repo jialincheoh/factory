@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ page.title or (SITE_NAME ~ " · Factories, warehouses and industrial land in Malaysia") }}</title>
+  <title>{{ page.title or (SITE_NAME ~ " · Factories, warehouses and industrial land") }}</title>
   {% if page.description %}<meta name="description" content="{{ page.description }}">{% endif %}
   <meta name="robots" content="{{ page.robots or 'noindex, nofollow' }}">
   {% if page.canonical %}<link rel="canonical" href="{{ page.canonical }}">
@@ -68,7 +68,7 @@
   <ul class="footer-links">{% for text, href in footer %}<li><a href="{{ href }}">{{ text }}</a></li>{% endfor %}</ul>
   {% endif %}
   <ul class="footer-links main">
-    <li><a href="/factory-for-sale">Factories for sale in Malaysia</a></li>
+    <li><a href="/factory-for-sale">Factories for sale</a></li>
     <li><a href="/factory-for-rent">Factories for rent</a></li>
     <li><a href="/warehouse-for-sale">Warehouses for sale</a></li>
     <li><a href="/warehouse-for-rent">Warehouses for rent</a></li>
@@ -76,7 +76,7 @@
     <li><a href="/commercial-building-for-sale">Commercial buildings for sale</a></li>
   </ul>
   <p class="muted small"><a href="/privacy">Privacy notice · Notis privasi</a></p>
-  <p class="muted small">Kilang, gudang dan tanah untuk dijual dan disewa di seluruh Malaysia.</p>
+  <p class="muted small">Kilang, gudang dan tanah untuk dijual dan disewa.</p>
 </footer>
 </body>
 </html>

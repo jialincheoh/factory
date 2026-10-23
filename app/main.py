@@ -254,8 +254,8 @@ def home(request: Request, conn=Depends(db.get_conn)):
     payload = results_payload(listings)
     filtered = bool(request.query_params)
     page = {
-        "title": f"Factories, Warehouses & Land for Sale and Rent in Malaysia | {config.SITE_NAME}",
-        "description": "Factories, warehouses, industrial land and commercial buildings for sale and rent across Malaysia: Shah Alam, "
+        "title": f"Factories, Warehouses & Land for Sale and Rent | {config.SITE_NAME}",
+        "description": "Factories, warehouses, industrial land and commercial buildings for sale and rent in Shah Alam, "
                        "Glenmarie, Puchong, Klang and more. Kilang, gudang dan tanah untuk dijual dan disewa.",
         "canonical": seo.absolute("/"),
         # Filter combinations are endless; keep them out of the index but let crawlers follow the links.
@@ -778,7 +778,7 @@ def review(request_id: uuid.UUID, request: Request, agent_id: str = Depends(secu
     # First map pin: the named town's centre; the agent drags it to the exact spot.
     known = geo.locate(card.get("location"), card.get("title"), req["description_original"])
     pin = {"lat": known[1], "lng": known[2], "zoom": 13} if known else \
-          {"lat": geo.MALAYSIA_CENTRE[0], "lng": geo.MALAYSIA_CENTRE[1], "zoom": 6}
+          {"lat": geo.COUNTRY_CENTRE[0], "lng": geo.COUNTRY_CENTRE[1], "zoom": 6}
     if known and not card.get("state"):
         card["state"] = known[0]
     captions = {c["photo"]: c["caption"] for c in analysis.get("photo_captions") or []}
@@ -1011,7 +1011,7 @@ def privacy(request: Request):
                   search_logging=config.SEARCH_LOGGING, cookie_lifetime="8 hours", cookie_lifetime_bm="8 jam",
                   self_signup=False, has_map=True, ai_drafts=True, page={
                       "title": f"Privacy notice · Notis privasi | {config.SITE_NAME}",
-                      "description": f"What personal data {config.SITE_NAME} collects, why, and your rights under Malaysia's PDPA.",
+                      "description": f"What personal data {config.SITE_NAME} collects, why, and your rights under the PDPA.",
                       "canonical": seo.absolute('/privacy'), "robots": "index, follow"})
 
 
@@ -1068,13 +1068,14 @@ def _range(values, fmt):
     return lo if lo == hi else f"{lo} to {hi}"
 
 
-def landing_intro(heading: str, place: str, malay: str, listings: list[dict]) -> str:
+def landing_intro(heading: str, place: str | None, malay: str, listings: list[dict]) -> str:
     """A short summary built from the live listings, so each landing page says something specific."""
     n = len(listings)
+    where = f" in {place}" if place else ""
     if not n:
-        return (f"There are no {heading.lower()} in {place} listed right now. "
+        return (f"There are no {heading.lower()}{where} listed right now. "
                 "Try a nearby area, or describe what you need in the search box and we will show the closest matches.")
-    parts = [f"{heading} in {place}: {n} listing{'s' if n != 1 else ''} available now."]
+    parts = [f"{heading}{where}: {n} listing{'s' if n != 1 else ''} available now."]
     price = _range([float(l["price"]) for l in listings if l["price"]], lambda v: money(v))
     if price:
         parts.append(f"Asking {'rent' if 'rent' in heading else 'price'}: {price}{' per month' if 'rent' in heading else ''}.")
@@ -1090,7 +1091,7 @@ def landing_intro(heading: str, place: str, malay: str, listings: list[dict]) ->
     container = sum(1 for l in listings if l["container_access"])
     if container:
         parts.append("All with 40-ft container access." if container == n else f"{container} with 40-ft container access.")
-    parts.append(f"{malay} di {place}.")
+    parts.append(f"{malay} di {place}." if place else f"{malay}.")
     return " ".join(parts)
 
 
@@ -1099,7 +1100,7 @@ def _landing(request: Request, conn, key: str, place_slug: str | None):
         raise HTTPException(404)
     types, deal, heading, malay = seo.LANDING[key]
     filters = SearchFilters(property_types=types, deal_type=deal)
-    place = "Malaysia"
+    place = None
     path = f"/{key}"
     crumbs = [("Home", "/"), (heading, path)]
     if place_slug is not None:
@@ -1131,9 +1132,10 @@ def _landing(request: Request, conn, key: str, place_slug: str | None):
             related_types.append((text, href))
 
     n = len(listings)
-    title_place = place if place_slug else "Malaysia"
+    title_place = place if place_slug else None
+    full_heading = f"{heading} in {title_place}" if title_place else heading
     page = {
-        "title": f"{heading} in {title_place}" + (f" ({n} listing{'s' if n != 1 else ''})" if n else "")
+        "title": full_heading + (f" ({n} listing{'s' if n != 1 else ''})" if n else "")
                  + f" | {config.SITE_NAME}",
         "description": landing_intro(heading, title_place, malay, listings)[:300],
         "canonical": seo.absolute(path),
@@ -1145,7 +1147,7 @@ def _landing(request: Request, conn, key: str, place_slug: str | None):
     }
     return render(request, "portal/home.html", listings=listings, form=form_from_filters(filters), filtered=True,
                   markers=payload["markers"], page=page, crumbs=crumbs,
-                  heading=f"{heading} in {title_place}", intro=landing_intro(heading, title_place, malay, listings),
+                  heading=full_heading, intro=landing_intro(heading, title_place, malay, listings),
                   related_places=related_places[:12], related_types=related_types[:8])
 
 

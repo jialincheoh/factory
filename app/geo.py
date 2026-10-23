@@ -1,4 +1,4 @@
-"""Approximate centres of Malaysian towns and industrial areas.
+"""Approximate centres of towns and industrial areas.
 
 Used to drop a first map pin when an agent names a town, and by the offline
 search rules to recognise place names. Agents move the pin to the exact spot
@@ -59,7 +59,7 @@ ALIASES = {"prai": "Perai", "jb": "Johor Bahru", "pj": "Petaling Jaya", "kl": "K
            "hicom glenmarie": "Glenmarie", "temasya glenmarie": "Glenmarie", "temasya industrial park": "Glenmarie",
            "novus business park": "Glenmarie", "novus industrial park": "Glenmarie"}
 
-MALAYSIA_CENTRE = (4.2, 102.0)
+COUNTRY_CENTRE = (4.2, 102.0)
 
 
 def lookup(name: str | None):

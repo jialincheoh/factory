@@ -16,7 +16,7 @@ g iam service-accounts describe "$RUN_SA" >/dev/null 2>&1 \
 g artifacts repositories describe "$REPO" --location "$REGION" >/dev/null 2>&1 \
   || g artifacts repositories create "$REPO" --location "$REGION" --repository-format docker
 
-# Database: smallest shared-core Postgres 16, daily backups (18:00 UTC = 02:00 in Malaysia).
+# Database: smallest shared-core Postgres 16, daily backups (18:00 UTC = 02:00 UTC+8).
 if ! g sql instances describe "$SQL_INSTANCE" >/dev/null 2>&1; then
   g sql instances create "$SQL_INSTANCE" --region "$REGION" --database-version POSTGRES_16 \
     --edition enterprise --tier db-f1-micro --storage-size 10 --storage-auto-increase \

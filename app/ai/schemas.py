@@ -30,7 +30,7 @@ class PropertyCard(BaseModel):
                                                     "'other' for something else, such as a shop, a single office unit or a house")
     deal_type: DealType = Field(description="'rent' if the property is for rent or lease (sewa); otherwise 'sale' (dijual)")
     location: Optional[str] = Field(None, description="Town or industrial area, e.g. 'Shah Alam', 'Senai', only if stated")
-    state: Optional[str] = Field(None, description="Malaysian state, e.g. Selangor, Johor, Penang, only if stated or obvious from the town")
+    state: Optional[str] = Field(None, description="State, e.g. Selangor, Johor, Penang, only if stated or obvious from the town")
     price: Optional[float] = Field(None, gt=0, description="Asking price, or monthly rent for rentals, as a plain number in RM")
     land_area_acres: Optional[float] = Field(None, gt=0, description="Land area in acres (ekar); convert from sqft (43,560 sqft per acre) or hectares (2.471 acres per ha)")
     size_sqft: Optional[int] = Field(None, gt=0, description="Built-up floor area in sqft")
@@ -149,7 +149,7 @@ class SearchFilters(BaseModel):
         default_factory=list,
         description="Any of these types; empty means all")
     location: Optional[str] = Field(None, description="Town or industrial area, partial match, e.g. 'Shah Alam'")
-    state: Optional[str] = Field(None, description="Malaysian state, e.g. 'Johor'")
+    state: Optional[str] = Field(None, description="State, e.g. 'Johor'")
     min_price: Optional[float] = Field(None, ge=0)
     max_price: Optional[float] = Field(None, ge=0, description="Total price for sale, monthly rent for rent")
     min_land_acres: Optional[float] = Field(None, ge=0)

@@ -2,12 +2,12 @@
 {% block content %}
 <article class="legal">
 <h1>Privacy notice · Notis privasi</h1>
-<p class="muted small">Last updated 11 October 2026 · Dikemas kini 11 Oktober 2026 · <a href="#bm">Baca dalam Bahasa Malaysia</a></p>
+<p class="muted small">Last updated 11 October 2026 · Dikemas kini 11 Oktober 2026 · <a href="#bm">Baca dalam Bahasa Melayu</a></p>
 {% if not operator or not privacy_email %}
 <p class="notice">Before launch: set <code>OPERATOR_NAME</code> and <code>PRIVACY_EMAIL</code> in the site settings. This notice must name who runs the site and how to contact them.</p>
 {% endif %}
 
-<p>This notice explains what personal data {{ SITE_NAME }} collects, why, who it is shared with and what you can do about it, as required by Malaysia's Personal Data Protection Act 2010 (PDPA).</p>
+<p>This notice explains what personal data {{ SITE_NAME }} collects, why, who it is shared with and what you can do about it, as required by the Personal Data Protection Act 2010 (PDPA).</p>
 
 <h2>Who we are</h2>
 <p>{{ SITE_NAME }} is run by {{ operator or "[operator name]" }}. For any question or request about your personal data, email <a href="mailto:{{ privacy_email }}">{{ privacy_email or "[contact email]" }}</a>.</p>
@@ -46,9 +46,9 @@
 <h2>Who we share it with</h2>
 <ul>
   <li><strong>Buyers</strong> see the {% if self_signup %}seller's{% else %}agent's{% endif %} name, and the phone number when they ask for it on a {% if self_signup %}ad{% else %}listing{% endif %} page.</li>
-  <li><strong>Google</strong> (Gemini AI) processes {% if self_signup %}sellers'{% else %}agents'{% endif %} descriptions and photos, and the text, voice recordings and photos of searches, to provide the AI features. Google's servers may be outside Malaysia.</li>
+  <li><strong>Google</strong> (Gemini AI) processes {% if self_signup %}sellers'{% else %}agents'{% endif %} descriptions and photos, and the text, voice recordings and photos of searches, to provide the AI features. Google's servers may be outside the country.</li>
   {% if has_map %}<li><strong>OpenStreetMap</strong> provides the maps. Your browser loads map images directly from OpenStreetMap's servers, which therefore see your IP address.</li>{% endif %}
-  <li>Our <strong>hosting provider</strong>, which stores the site and its data, possibly outside Malaysia.</li>
+  <li>Our <strong>hosting provider</strong>, which stores the site and its data, possibly outside the country.</li>
   <li>Authorities, when the law requires it.</li>
 </ul>
 <p>We do not sell personal data, and we do not share it with advertisers.</p>
@@ -60,7 +60,7 @@
 <p>We keep account data while your account is open, and {% if self_signup %}ads{% else %}listings{% endif %} while they are published or needed for your records. We delete or anonymise data when it is no longer needed. You can ask us to close your account and delete your data at any time.</p>
 
 <h2>Your rights</h2>
-<p>You can ask to see the personal data we hold about you, have it corrected, withdraw consent, limit how we use it, or have it deleted. Email {{ privacy_email or "[contact email]" }}. We reply to access requests within 21 days. If you are not satisfied, you can complain to Malaysia's Personal Data Protection Commissioner (Jabatan Perlindungan Data Peribadi).</p>
+<p>You can ask to see the personal data we hold about you, have it corrected, withdraw consent, limit how we use it, or have it deleted. Email {{ privacy_email or "[contact email]" }}. We reply to access requests within 21 days. If you are not satisfied, you can complain to the Personal Data Protection Commissioner (Jabatan Perlindungan Data Peribadi).</p>
 
 <h2>How we protect it</h2>
 <p>Passwords are stored hashed, the site uses encrypted connections (HTTPS), and access to the database is restricted.</p>
@@ -109,9 +109,9 @@
 <h2>Dengan siapa kami berkongsi</h2>
 <ul>
   <li><strong>Pembeli</strong> melihat nama {% if self_signup %}penjual{% else %}ejen{% endif %}, dan nombor telefon apabila mereka memintanya di halaman {% if self_signup %}iklan{% else %}penyenaraian{% endif %}.</li>
-  <li><strong>Google</strong> (AI Gemini) memproses penerangan dan gambar {% if self_signup %}penjual{% else %}ejen{% endif %}, serta teks carian, untuk menyediakan ciri AI. Pelayan Google mungkin berada di luar Malaysia.</li>
+  <li><strong>Google</strong> (AI Gemini) memproses penerangan dan gambar {% if self_signup %}penjual{% else %}ejen{% endif %}, serta teks carian, untuk menyediakan ciri AI. Pelayan Google mungkin berada di luar negara.</li>
   {% if has_map %}<li><strong>OpenStreetMap</strong> menyediakan peta. Pelayar anda memuatkan imej peta terus daripada pelayan OpenStreetMap, yang dengan itu dapat melihat alamat IP anda.</li>{% endif %}
-  <li><strong>Penyedia hos</strong> kami, yang menyimpan laman dan datanya, mungkin di luar Malaysia.</li>
+  <li><strong>Penyedia hos</strong> kami, yang menyimpan laman dan datanya, mungkin di luar negara.</li>
   <li>Pihak berkuasa, apabila dikehendaki oleh undang-undang.</li>
 </ul>
 <p>Kami tidak menjual data peribadi dan tidak berkongsinya dengan pengiklan.</p>
@@ -123,7 +123,7 @@
 <p>Kami menyimpan data akaun selagi akaun anda dibuka, dan {% if self_signup %}iklan{% else %}penyenaraian{% endif %} selagi ia disiarkan atau diperlukan untuk rekod anda. Kami memadam atau menjadikan data tanpa nama apabila ia tidak lagi diperlukan. Anda boleh meminta kami menutup akaun dan memadam data anda pada bila-bila masa.</p>
 
 <h2>Hak anda</h2>
-<p>Anda boleh meminta untuk melihat data peribadi anda yang kami simpan, membetulkannya, menarik balik persetujuan, mengehadkan penggunaannya, atau memadamnya. E-mel {{ privacy_email or "[e-mel hubungan]" }}. Kami membalas permintaan akses dalam tempoh 21 hari. Jika tidak berpuas hati, anda boleh membuat aduan kepada Pesuruhjaya Perlindungan Data Peribadi Malaysia (Jabatan Perlindungan Data Peribadi).</p>
+<p>Anda boleh meminta untuk melihat data peribadi anda yang kami simpan, membetulkannya, menarik balik persetujuan, mengehadkan penggunaannya, atau memadamnya. E-mel {{ privacy_email or "[e-mel hubungan]" }}. Kami membalas permintaan akses dalam tempoh 21 hari. Jika tidak berpuas hati, anda boleh membuat aduan kepada Pesuruhjaya Perlindungan Data Peribadi (Jabatan Perlindungan Data Peribadi).</p>
 
 <h2>Cara kami melindunginya</h2>
 <p>Kata laluan disimpan dalam bentuk hash, laman ini menggunakan sambungan yang disulitkan (HTTPS), dan akses kepada pangkalan data adalah terhad.</p>

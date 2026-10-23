@@ -4,7 +4,7 @@ Agents sometimes put their phone number in a description, and buyers sometimes
 type theirs into the search box. Neither is needed by the model: buyers reveal
 the agent's phone on the listing page (which is how enquiries are counted), and
 searches need only the requirements. Pattern-based, so it catches the common
-Malaysian formats rather than every possible one; the privacy notice still asks
+local formats rather than every possible one; the privacy notice still asks
 buyers not to type personal details.
 """
 import re

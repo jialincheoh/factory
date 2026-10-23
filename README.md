@@ -66,7 +66,7 @@ A FastAPI app with server-rendered pages, the Postgres schema above, and LangCha
 
 If `LLM_FALLBACK_MODEL` is set, every call moves to that model when the main one fails, and `generation_requests.model_name` records the model(s) that actually answered. `TRACE_TO_LANGSMITH=1` sends traces to LangSmith with photos removed; it is refused outside local development because the privacy notice does not cover it.
 
-**Built for factories, warehouses and land in Malaysia.** The property card and search cover the specs industrial buyers screen on: sale or rent, land area (acres), built-up area, ceiling height, power supply (amps or kVA; kVA is converted to amps for search, 1 kVA ≈ 1.39 A at 415 V three-phase), freehold or leasehold with years left, zoning (light, medium or heavy industrial, commercial, agricultural), 40-ft container access and loading bays. The model reads English, Malay and Chinese descriptions (e.g. *kilang*, *ekar*, *pegangan bebas*).
+**Built for factories, warehouses and land.** The property card and search cover the specs industrial buyers screen on: sale or rent, land area (acres), built-up area, ceiling height, power supply (amps or kVA; kVA is converted to amps for search, 1 kVA ≈ 1.39 A at 415 V three-phase), freehold or leasehold with years left, zoning (light, medium or heavy industrial, commercial, agricultural), 40-ft container access and loading bays. The model reads English, Malay and Chinese descriptions (e.g. *kilang*, *ekar*, *pegangan bebas*).
 
 **Buyer side (`/`)**
 
@@ -159,7 +159,7 @@ scripts/                               create_agent, seed_demo
 db/migrations/V1__initial_schema.sql   schema (first migration)
 db/migrations/V2__website.sql          logins, property card, photos, analysis
 db/migrations/V3__industrial_fields.sql  power, ceiling, land area, tenure, zoning, container access, map pin
-app/geo.py                             Malaysian towns and industrial areas (approximate centres)
+app/geo.py                             Towns and industrial areas (approximate centres)
 app/static/vendor/leaflet/             Leaflet 1.9.4 (BSD-2), checked against its published SRI hashes
 tests/test_schema.sql                  constraint tests, rolled back after running
 tests/test_app.py                      end-to-end website tests (pytest)
