@@ -12,9 +12,11 @@ The goal is to learn from two signals at once: what real estate agents actually 
 
 ![Overview: the AI writes 5 ad drafts, the human real estate agent keeps one, the ad goes live, results come back, and the system learns which drafts work](docs/overview.svg)
 
-The system runs on two clocks that share one Postgres database. In the detailed diagram below, **blue** is the online path (seconds) and **amber** is the feedback path (days to weeks).
+The detailed diagram below shows the running website: the agent's side writes, checks and publishes ads, the buyer's side searches, and both share one Postgres database.
 
-![System design: online path, feedback path and the shared Postgres system of record](docs/architecture.svg)
+![System design: contact details are masked, a writer, checker and editor draft the ad, the real estate agent reviews and publishes it, buyers search through a search loop, and everything is recorded in Postgres for a monitor that reports to the site owner](docs/architecture.png)
+
+The notes below describe the research design the system is working towards, on two clocks. It includes a job queue, reranker and training loop that the website does not have yet.
 
 - **Online path (seconds).** Real estate agent's app → API service → job queue → generation worker → language model, with an optional reranker. The worker stores every AI draft with its display position and shuffle seed. The real estate agent keeps one draft, edits it, writes their own, or rejects all of them.
 - **Feedback path (days to weeks).** Ads are published on our own property portal, which logs views, clicks, inquiries and phone-number reveals first-hand. A nightly export trains the reranker, which is then redeployed.
@@ -25,7 +27,7 @@ The reranker starts as random order on purpose, so the first months of data show
 
 The system is two loops that share one filing cabinet.
 
-### The fast loop (blue): seconds, while the real estate agent waits
+### The fast loop: seconds, while the real estate agent waits
 
 1. **Real estate agent:** a person opens the app and asks for ad ideas for a listing.
 2. **API service, the front desk:** receives the request. It also quietly decides which version of the system this person gets, the way a shop tests two window displays, and how the drafts will be shuffled.
@@ -40,7 +42,7 @@ The system is two loops that share one filing cabinet.
 
 Everything is written down here: every draft, including the rejected ones, what the real estate agent chose, and how ads perform later. It is the single source of truth both loops share. Buyers' names and contact details are never stored here.
 
-### The slow loop (amber): days and weeks, learning from results
+### The slow loop: days and weeks, learning from results
 
 1. **Our property portal:** records every buyer action on each ad as it happens: views, clicks, inquiries, and clicks to reveal the real estate agent's phone number. The number stays hidden until a buyer clicks, so phone interest is linked to the exact ad too.
 2. **Event logger, the record keeper:** files each action once. If the same action is reported twice, it is only counted once.
@@ -166,7 +168,7 @@ tests/test_app.py                      end-to-end website tests (pytest)
 docker-compose.yml                     local Postgres with the schema applied
 .env.example                           local settings template
 docs/overview.svg                      simple five-step loop
-docs/architecture.svg                  detailed system design
+docs/architecture.png                  detailed system design
 ```
 
 ## Run the schema tests
