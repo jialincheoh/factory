@@ -19,6 +19,7 @@ os.environ["LLM_MODEL"] = "offline"
 os.environ["EMBEDDINGS_MODEL"] = "fake"  # deterministic vectors, no API
 os.environ["SECURE_COOKIES"] = "0"  # the test client speaks plain http
 os.environ["VIDEO_WORKER"] = "0"  # tests call render_next() themselves
+os.environ["MARKET_CHECK_WORKER"] = "0"
 os.environ["SESSION_SECRET"] = "test-only"
 os.environ["UPLOAD_DIR"] = tempfile.mkdtemp(prefix="listing-uploads-")
 

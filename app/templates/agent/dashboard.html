@@ -6,7 +6,7 @@
 </div>
 {% if listings %}
 <table class="table">
-  <thead><tr><th>Listing</th><th>Status</th><th>Price</th><th class="num">Shown</th><th class="num">Opened</th><th class="num">Phone reveals</th><th>Homepage</th><th>Video tour</th></tr></thead>
+  <thead><tr><th>Listing</th><th>Status</th><th>Price</th><th class="num">Shown</th><th class="num">Opened</th><th class="num">Phone reveals</th><th>Homepage</th><th>Video tour</th><th>Market check</th></tr></thead>
   <tbody>
   {% for l in listings %}
     <tr>
@@ -31,6 +31,7 @@
         {% else %}<span class="muted small">Being made</span>{% endif %}{% endif %}
         {% else %}<span class="muted small">Needs {{ video_min_photos }}+ photos</span>{% endif %}
       {% endif %}</td>
+      <td>{% if l.status == 'published' %}<a href="/agent/listings/{{ l.listing_id }}/market">{{ "View" if l.market_status else "Not checked yet" }}</a>{% endif %}</td>
     </tr>
   {% endfor %}
   </tbody>

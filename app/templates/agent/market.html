@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="muted small"><a href="/agent">← Your listings</a></p>
+<h1>Market check</h1>
+<p>{{ listing.title }}</p>
+<p class="muted small"><strong>Not a valuation.</strong> This compares your asking price with asking prices found online. They are not sale prices, and a search can miss listings or differences in condition, title and location. Only you can see this page.</p>
+
+{% if not check %}
+<p class="empty">Not checked yet.</p>
+{% elif not report %}
+<p class="empty">{% if check.status == "running" %}Being checked. This takes a few minutes.{% else %}The check could not be finished. It will be tried again tomorrow.{% endif %}</p>
+{% else %}
+{% set unit = "per sqft of land" if report.basis == "land" else "per sqft built-up" %}
+{% set rm = currency ~ " " %}
+{% if check.status == "running" %}<p class="muted small">A newer check is running. This one is from {{ report.as_of }}.</p>{% endif %}
+{% if report.enough %}
+<dl class="spec-table">
+  <dt>Your asking price</dt><dd>{% if report.listing_per_sqft %}{{ rm }}{{ report.listing_per_sqft | number(2) }} {{ unit }}{% else %}No price or size to compare{% endif %}</dd>
+  <dt>Similar listings, middle value</dt><dd>{{ rm }}{{ report.median | number(2) }} {{ unit }}</dd>
+  <dt>Similar listings, lowest to highest</dt><dd>{{ rm }}{{ report.low | number(2) }} to {{ rm }}{{ report.high | number(2) }}</dd>
+  {% if report.position %}<dt>Your price is</dt><dd>{{ {"below": "below this range", "within": "within this range", "above": "above this range"}[report.position] }}</dd>{% endif %}
+</dl>
+{% else %}
+<p class="empty">Not enough similar listings with a stated price and size were found online to compare ({{ report.comparables | length }} found, {{ min_comparables }} needed).</p>
+{% endif %}
+
+{% if report.comparables %}
+<h2>Listings compared</h2>
+<table class="table">
+  <thead><tr><th>Property</th><th class="num">Price</th><th class="num">Area (sqft)</th><th class="num">{{ currency }} per sqft</th><th>Source</th></tr></thead>
+  <tbody>
+  {% for c in report.comparables %}
+    <tr>
+      <td>{{ c.title }}{% if c.location %}<br><span class="muted small">{{ c.location }}</span>{% endif %}<br><span class="muted small">{{ c.similarity }}</span></td>
+      <td class="num">{{ c.price | number }}</td><td class="num">{{ c.area_sqft | number }}</td><td class="num">{{ c.per_sqft | number(2) }}</td>
+      <td><a href="{{ c.url }}" rel="noopener noreferrer nofollow" target="_blank">{{ c.source_title or "Source" }}</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+<p class="muted small">Checked {{ report.as_of }}, {{ report.searches }} web searches.
+  {% set d = report.dropped %}{% if d.unverified or d.incomplete or d.not_similar or d.same_property %}Left out: {{ d.unverified }} not confirmed by their source, {{ d.incomplete }} without a price or size, {{ d.not_similar }} not similar, {{ d.same_property }} probably this same property.{% endif %}</p>
+{% if report.notes %}<p class="muted small">Agent's note: {{ report.notes }}</p>{% endif %}
+{% endif %}
+{% endblock %}

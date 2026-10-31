@@ -18,7 +18,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import brochure, config, db, embeddings, geo, images, revisions, security, seo, video
+from . import brochure, config, db, embeddings, geo, images, market, revisions, security, seo, video
 from .ai import get_assistant, pii
 from .ai.calllog import CallRecorder, emit
 from .ai.llm import AD_PROMPT_FINGERPRINT, PROMPT_VERSION, SEARCH_PROMPT_FINGERPRINT, SEARCH_PROMPT_VERSION
@@ -29,9 +29,13 @@ EXPERIMENT_ARM = "random_order_v1"  # drafts shown in seeded random order
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    stop = video.start_worker() if config.VIDEO_WORKER else None
+    stops = []
+    if config.VIDEO_WORKER:
+        stops.append(video.start_worker())
+    if config.MARKET_CHECK_WORKER:
+        stops.append(market.start_worker())
     yield
-    if stop:
+    for stop in stops:
         stop.set()
 
 
@@ -576,7 +580,7 @@ def dashboard(request: Request, agent_id: str = Depends(security.require_agent),
                          [agent_id]).fetchone()
     listings = conn.execute("""
         SELECT l.listing_id, l.title, l.status, l.deal_type, l.price_listed AS price, l.updated_at, l.featured_at,
-               l.video_enabled, v.status AS video_status,
+               l.video_enabled, v.status AS video_status, m.status AS market_status,
                (SELECT count(*) FROM listing_images i WHERE i.listing_id = l.listing_id) AS photo_count,
                (SELECT request_id FROM generation_requests g WHERE g.listing_id = l.listing_id
                  ORDER BY created_at DESC LIMIT 1) AS latest_request,
@@ -587,8 +591,9 @@ def dashboard(request: Request, agent_id: str = Depends(security.require_agent),
         LEFT JOIN published_ads p ON p.listing_id = l.listing_id
         LEFT JOIN ad_events e ON e.ad_id = p.ad_id
         LEFT JOIN listing_videos v ON v.listing_id = l.listing_id
+        LEFT JOIN listing_market_checks m ON m.listing_id = l.listing_id
         WHERE l.real_estate_agent_id = %s
-        GROUP BY l.listing_id, v.status ORDER BY l.updated_at DESC""", [agent_id]).fetchall()
+        GROUP BY l.listing_id, v.status, m.status ORDER BY l.updated_at DESC""", [agent_id]).fetchall()
     return render(request, "agent/dashboard.html", agent=agent, listings=listings, video_min_photos=video.MIN_PHOTOS)
 
 
@@ -651,6 +656,20 @@ def toggle_video(listing_id: uuid.UUID, request: Request, agent_id: str = Depend
     if not row["video_enabled"]:
         conn.execute("UPDATE listing_videos SET attempts = 0 WHERE listing_id = %s AND status = 'failed'", [listing_id])
     return RedirectResponse("/agent", status_code=303)
+
+
+@app.get("/agent/listings/{listing_id}/market", response_class=HTMLResponse)
+def market_check_page(listing_id: uuid.UUID, request: Request, agent_id: str = Depends(security.require_agent),
+                      conn=Depends(db.get_conn)):
+    """The comparison with similar listings online. For the listing's agent only: see app/market.py."""
+    listing = conn.execute("SELECT title FROM listings WHERE listing_id = %s AND real_estate_agent_id = %s "
+                           "AND status = 'published'", [listing_id, agent_id]).fetchone()
+    if not listing:
+        raise HTTPException(404)
+    check = conn.execute("SELECT status, report FROM listing_market_checks WHERE listing_id = %s",
+                         [listing_id]).fetchone()
+    return render(request, "agent/market.html", listing=listing, check=check, report=check and check["report"],
+                  min_comparables=market.MIN_COMPARABLES)
 
 
 @app.get("/agent/new", response_class=HTMLResponse)

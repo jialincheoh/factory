@@ -64,6 +64,10 @@ MAX_IMAGES = 8
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 # Render listing video tours in a background thread of the web server. See app/video.py.
 VIDEO_WORKER = os.environ.get("VIDEO_WORKER", "1") != "0"
+# Compare listings with similar ones online, in a background thread. Uses quota, so off unless set. See app/market.py.
+MARKET_CHECK_WORKER = os.environ.get("MARKET_CHECK_WORKER", "0") == "1"
+MARKET_MODEL = os.environ.get("MARKET_MODEL", os.environ.get("LLM_MODEL", "google_genai:gemini-3.5-flash"))
+MARKET_SEARCH_MODEL = os.environ.get("MARKET_SEARCH_MODEL", MARKET_MODEL.split(":", 1)[-1])
 CURRENCY = os.environ.get("CURRENCY", "RM")
 CURRENCY_CODE = os.environ.get("CURRENCY_CODE", "MYR")  # ISO 4217, for structured data
 
