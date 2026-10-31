@@ -5,6 +5,7 @@ import re
 import secrets
 import time
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -17,7 +18,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import brochure, config, db, embeddings, geo, images, revisions, security, seo
+from . import brochure, config, db, embeddings, geo, images, revisions, security, seo, video
 from .ai import get_assistant, pii
 from .ai.calllog import CallRecorder, emit
 from .ai.llm import AD_PROMPT_FINGERPRINT, PROMPT_VERSION, SEARCH_PROMPT_FINGERPRINT, SEARCH_PROMPT_VERSION
@@ -25,7 +26,16 @@ from .ai.schemas import PROPERTY_TYPES, ZONINGS, SearchFilters
 
 EXPERIMENT_ARM = "random_order_v1"  # drafts shown in seeded random order
 
-app = FastAPI(title="Listing Ad Pipeline", docs_url=None, redoc_url=None)
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    stop = video.start_worker() if config.VIDEO_WORKER else None
+    yield
+    if stop:
+        stop.set()
+
+
+app = FastAPI(title="Listing Ad Pipeline", docs_url=None, redoc_url=None, lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=config.SESSION_SECRET or secrets.token_hex(32),  # random = sessions reset on restart
@@ -56,7 +66,7 @@ async def security_headers(request: Request, call_next):
     path = request.url.path
     if path.startswith("/static/") and request.query_params.get("v") == STATIC_VERSION:
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-    elif path.startswith("/uploads/") and response.status_code == 200:
+    elif path.startswith(("/uploads/", "/videos/")) and response.status_code in (200, 206):
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable"  # random, never-reused names
     if path.startswith(("/agent", "/api/")):
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
@@ -465,8 +475,11 @@ def listing_page(listing_id: uuid.UUID, slug: str, request: Request, conn=Depend
     }
     agent = conn.execute("SELECT a.display_name, a.registration_no FROM listings l JOIN real_estate_agents a "
                          "USING (real_estate_agent_id) WHERE l.listing_id = %s", [listing_id]).fetchone()
+    tour = conn.execute("SELECT v.file_name FROM listing_videos v JOIN listings l USING (listing_id) "
+                        "WHERE v.listing_id = %s AND v.file_name IS NOT NULL AND l.video_enabled",
+                        [listing_id]).fetchone()
     return render(request, "portal/listing.html", listing=listing, photos=photos, page=page, crumbs=crumbs,
-                  agent=agent)
+                  agent=agent, tour=tour)
 
 
 @app.post("/api/listings/{listing_id}/phone")
@@ -507,6 +520,25 @@ def uploaded_photo(name: str, request: Request, conn=Depends(db.get_conn)):
     return Response(data, media_type="image/jpeg")
 
 
+VIDEO_NAME = re.compile(r"^[0-9a-f]{32}\.mp4$")
+
+
+@app.get("/videos/{name}")
+def listing_video(name: str, conn=Depends(db.get_conn)):
+    """FileResponse answers Range requests, which Safari requires before it will play a video.
+    Identity encoding keeps the gzip middleware from compressing an already compressed file."""
+    if not VIDEO_NAME.match(name):
+        raise HTTPException(404)
+    row = conn.execute("SELECT 1 FROM listing_videos v JOIN listings l USING (listing_id) "
+                       "WHERE v.file_name = %s AND l.status = 'published' AND l.video_enabled", [name]).fetchone()
+    if not row:
+        raise HTTPException(404)
+    path = video.cached_path(name, conn)
+    if path is None:
+        raise HTTPException(404)
+    return FileResponse(path, media_type="video/mp4", headers={"Content-Encoding": "identity"})
+
+
 # ------------------------------------------------------- real estate agent side
 
 @app.get("/agent/login", response_class=HTMLResponse)
@@ -544,6 +576,8 @@ def dashboard(request: Request, agent_id: str = Depends(security.require_agent),
                          [agent_id]).fetchone()
     listings = conn.execute("""
         SELECT l.listing_id, l.title, l.status, l.deal_type, l.price_listed AS price, l.updated_at, l.featured_at,
+               l.video_enabled, v.status AS video_status,
+               (SELECT count(*) FROM listing_images i WHERE i.listing_id = l.listing_id) AS photo_count,
                (SELECT request_id FROM generation_requests g WHERE g.listing_id = l.listing_id
                  ORDER BY created_at DESC LIMIT 1) AS latest_request,
                count(e.*) FILTER (WHERE e.event_type = 'impression')   AS impressions,
@@ -552,9 +586,10 @@ def dashboard(request: Request, agent_id: str = Depends(security.require_agent),
         FROM listings l
         LEFT JOIN published_ads p ON p.listing_id = l.listing_id
         LEFT JOIN ad_events e ON e.ad_id = p.ad_id
+        LEFT JOIN listing_videos v ON v.listing_id = l.listing_id
         WHERE l.real_estate_agent_id = %s
-        GROUP BY l.listing_id ORDER BY l.updated_at DESC""", [agent_id]).fetchall()
-    return render(request, "agent/dashboard.html", agent=agent, listings=listings)
+        GROUP BY l.listing_id, v.status ORDER BY l.updated_at DESC""", [agent_id]).fetchall()
+    return render(request, "agent/dashboard.html", agent=agent, listings=listings, video_min_photos=video.MIN_PHOTOS)
 
 
 def _agent_profile(conn, agent_id):
@@ -594,6 +629,27 @@ def toggle_featured(listing_id: uuid.UUID, request: Request, agent_id: str = Dep
                        [listing_id, agent_id]).fetchone()
     if not row:
         raise HTTPException(404)
+    return RedirectResponse("/agent", status_code=303)
+
+
+@app.post("/agent/listings/{listing_id}/video")
+def toggle_video(listing_id: uuid.UUID, request: Request, agent_id: str = Depends(security.require_agent),
+                 csrf: str = Form(None), conn=Depends(db.get_conn)):
+    """Turn the video tour of one of the agent's published listings on or off. Off hides it at once
+    and keeps the film, so turning it back on needs no new render. Turning on gives a film that
+    failed a fresh set of attempts."""
+    security.check_csrf(request, csrf)
+    row = conn.execute("SELECT video_enabled, (SELECT count(*) FROM listing_images i "
+                       "WHERE i.listing_id = l.listing_id) AS photos FROM listings l "
+                       "WHERE listing_id = %s AND real_estate_agent_id = %s AND status = 'published'",
+                       [listing_id, agent_id]).fetchone()
+    if not row:
+        raise HTTPException(404)
+    if not row["video_enabled"] and row["photos"] < video.MIN_PHOTOS:
+        raise HTTPException(400, f"A video needs at least {video.MIN_PHOTOS} photos.")
+    conn.execute("UPDATE listings SET video_enabled = NOT video_enabled WHERE listing_id = %s", [listing_id])
+    if not row["video_enabled"]:
+        conn.execute("UPDATE listing_videos SET attempts = 0 WHERE listing_id = %s AND status = 'failed'", [listing_id])
     return RedirectResponse("/agent", status_code=303)
 
 

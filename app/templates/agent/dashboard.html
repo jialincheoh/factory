@@ -6,7 +6,7 @@
 </div>
 {% if listings %}
 <table class="table">
-  <thead><tr><th>Listing</th><th>Status</th><th>Price</th><th class="num">Shown</th><th class="num">Opened</th><th class="num">Phone reveals</th><th>Homepage</th></tr></thead>
+  <thead><tr><th>Listing</th><th>Status</th><th>Price</th><th class="num">Shown</th><th class="num">Opened</th><th class="num">Phone reveals</th><th>Homepage</th><th>Video tour</th></tr></thead>
   <tbody>
   {% for l in listings %}
     <tr>
@@ -21,11 +21,21 @@
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <button class="linklike" type="submit">{{ "Unfeature" if l.featured_at else "Feature" }}</button>
       </form>{% if l.featured_at %} <span class="status published">Featured</span>{% endif %}{% endif %}</td>
+      <td>{% if l.status == 'published' %}
+        {% if l.video_enabled or l.photo_count >= video_min_photos %}<form method="post" action="/agent/listings/{{ l.listing_id }}/video" class="inline">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="linklike" type="submit">{{ "Turn off" if l.video_enabled else "Turn on" }}</button>
+        </form>
+        {% if l.video_enabled %}{% if l.video_status == 'ready' %}<span class="status published">On</span>
+        {% elif l.video_status == 'failed' %}<span class="muted small">Could not be made. Turn off and on to retry.</span>
+        {% else %}<span class="muted small">Being made</span>{% endif %}{% endif %}
+        {% else %}<span class="muted small">Needs {{ video_min_photos }}+ photos</span>{% endif %}
+      {% endif %}</td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
-<p class="muted small">Shown = times the ad appeared in browse or search results. Opened = listing page views. Phone reveals = buyers who clicked “Show phone number”.</p>
+<p class="muted small">Shown = times the ad appeared in browse or search results. Opened = listing page views. Phone reveals = buyers who clicked “Show phone number”. Video tour = a short film made from the listing's photos, shown on its page once you turn it on. It takes a few minutes to make.</p>
 {% else %}
 <p class="empty">No listings yet. Upload photos and a short description to create your first ad.</p>
 {% endif %}

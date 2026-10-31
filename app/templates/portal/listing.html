@@ -33,6 +33,16 @@
   </dialog>
   {% endif %}
 
+  {% if tour %}
+  <section class="video-tour" aria-labelledby="video-tour-heading">
+    <h2 id="video-tour-heading">Video tour</h2>
+    <video controls playsinline preload="none" width="960" height="540" poster="/uploads/{{ photos[0].file_name }}">
+      <source src="/videos/{{ tour.file_name }}" type="video/mp4">
+    </video>
+    <p class="muted small">Made from this listing's photos, with camera movement added.</p>
+  </section>
+  {% endif %}
+
   <div class="listing-main">
     <div>
       <p class="eyebrow"><span class="badge inline {{ listing.deal_type }}">{{ "For rent" if listing.deal_type == "rent" else "For sale" }}</span> {{ listing.property_type | type_label }}{% if listing.location %} · {{ listing.location }}{% endif %}{% if listing.state and listing.state != listing.location %}, {{ listing.state }}{% endif %}</p>

@@ -378,3 +378,8 @@ label { letter-spacing: .04em; font-size: .74rem; }
 .featured .card { border-top: 3px solid var(--gold); }
 .featured .card img, .featured .noimg { aspect-ratio: 16 / 9; }
 @media (max-width: 640px) { .featured-grid { grid-template-columns: 1fr; } }
+
+.video-tour { margin: 24px 0; }
+.video-tour h2 { margin: 0 0 10px; }
+.video-tour video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #0f0f0f; border-radius: 8px; }
+.video-tour p { margin: 8px 0 0; }

@@ -62,6 +62,8 @@ if os.environ.get("LANGSMITH_TRACING", "").lower() == "true":
 UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", ROOT / "uploads"))
 MAX_IMAGES = 8
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
+# Render listing video tours in a background thread of the web server. See app/video.py.
+VIDEO_WORKER = os.environ.get("VIDEO_WORKER", "1") != "0"
 CURRENCY = os.environ.get("CURRENCY", "RM")
 CURRENCY_CODE = os.environ.get("CURRENCY_CODE", "MYR")  # ISO 4217, for structured data
 
