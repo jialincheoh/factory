@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "ruff==0.17.3"
+      - run: ruff check .
+      - run: ruff format --check .
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: listing
+          POSTGRES_PASSWORD: listing-local-only
+          POSTGRES_DB: listing_ads
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U listing" --health-interval 2s --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Python tests
+        run: python -m pytest
+      - name: Migrations apply to an empty database
+        env:
+          DATABASE_URL: postgresql://listing:listing-local-only@localhost:5432/listing_ads
+        run: python -m scripts.migrate
+      - name: Database constraint tests
+        env:
+          PGPASSWORD: listing-local-only
+        run: psql -h localhost -U listing -d listing_ads -v ON_ERROR_STOP=1 -f tests/test_schema.sql
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t factory .

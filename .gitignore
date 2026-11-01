@@ -20,3 +20,8 @@ venv/
 
 # Uploaded listing photos
 uploads/
+.pytest_cache/
+.ruff_cache/
+
+# Evaluation exports can hold real listing text
+eval/

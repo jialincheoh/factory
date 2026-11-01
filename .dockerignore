@@ -1,8 +1,13 @@
 .env
 .venv
 .git
+.github
+.ruff_cache
+.pytest_cache
 uploads
 tests
 docs
 deploy
+Makefile
+README.md
 **/__pycache__

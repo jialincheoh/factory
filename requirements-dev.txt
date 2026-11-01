@@ -1,0 +1,4 @@
+# Test and lint tools, on top of the locked runtime dependencies.
+-r requirements.txt
+pytest>=7.4
+ruff==0.17.3

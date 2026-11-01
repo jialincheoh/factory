@@ -1,9 +1,8 @@
-# Local Postgres with the schema applied.
-# Migrations in db/migrations run once, when the data volume is first created.
-# To start over: docker compose down -v && docker compose up -d
+# `docker compose up --build` runs the whole site with demo data and no API key.
+# `docker compose up -d db` starts only Postgres, for running the app or the tests on the host.
 services:
   db:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-listing}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-listing-local-only}
@@ -11,13 +10,28 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - ./db/migrations:/docker-entrypoint-initdb.d:ro
-      - ./tests:/tests:ro
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-listing} -d ${POSTGRES_DB:-listing_ads}"]
       interval: 2s
       retries: 30
+
+  web:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-listing}:${POSTGRES_PASSWORD:-listing-local-only}@db:5432/${POSTGRES_DB:-listing_ads}
+      LLM_MODEL: offline # rule-based stand-in for the language model; needs no key
+      SECURE_COOKIES: "0" # plain http on localhost
+      SESSION_SECRET: local-development-only
+      UPLOAD_DIR: /tmp/uploads
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+    command: >
+      sh -c "python -m scripts.migrate && python -m scripts.seed_demo &&
+      exec uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
 volumes:
   pgdata:
