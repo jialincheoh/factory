@@ -59,17 +59,17 @@ Things to notice:
 sequenceDiagram
     actor Buyer
     participant Route as routes/search_api
-    participant Loop as Search loop
+    participant Chat as Search loop
     participant Model as Language model
     participant DB as Postgres
 
     Buyer->>Route: message, plus the current filters
-    Route->>Loop: masked history (12 messages at most)
-    Loop->>Model: messages and tools
-    Model-->>Loop: search_listings(typed filters)
-    Loop->>DB: parameterised SQL built by the app
-    DB-->>Loop: matches
-    Loop->>Model: results
+    Route->>Chat: masked history (12 messages at most)
+    Chat->>Model: messages and tools
+    Model-->>Chat: search_listings(typed filters)
+    Chat->>DB: parameterised SQL built by the app
+    DB-->>Chat: matches
+    Chat->>Model: results
     Model-->>Route: reply, or decline_request with a fixed reply
     Route->>DB: search event, impressions, model calls
     Route-->>Buyer: reply, result cards, map markers, updated filter bar
