@@ -7,6 +7,7 @@ fails, to the fallback model. The web app stores the records in model_calls
 cost and silent model changes) and prints one JSON line per call, which Cloud
 Logging picks up.
 """
+
 import json
 import logging
 import time
@@ -52,12 +53,17 @@ class CallRecorder(BaseCallbackHandler):
             message = None
         usage = getattr(message, "usage_metadata", None) or {}
         reported = (getattr(message, "response_metadata", None) or {}).get("model_name")
-        self._close(run_id, ok=True, error=None, served_by=reported,
-                    input_tokens=usage.get("input_tokens"), output_tokens=usage.get("output_tokens"))
+        self._close(
+            run_id,
+            ok=True,
+            error=None,
+            served_by=reported,
+            input_tokens=usage.get("input_tokens"),
+            output_tokens=usage.get("output_tokens"),
+        )
 
     def on_llm_error(self, error, *, run_id, **kwargs):
-        self._close(run_id, ok=False, error=type(error).__name__, served_by=None,
-                    input_tokens=None, output_tokens=None)
+        self._close(run_id, ok=False, error=type(error).__name__, served_by=None, input_tokens=None, output_tokens=None)
 
     def format_failure(self, step: str) -> None:
         """The last successful call of this step returned output that did not fit the schema."""

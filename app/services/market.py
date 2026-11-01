@@ -12,6 +12,7 @@ Runs outside requests, because one check takes minutes: `python -m scripts.marke
 background thread when MARKET_CHECK_WORKER=1. Checks use model and search quota, so it is off
 unless turned on.
 """
+
 import hashlib
 import json
 import re
@@ -25,9 +26,9 @@ import httpx
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field
 
-from . import config, db
-from .ai.calllog import CallRecorder, emit
-from .ai.llm import prompt_fingerprint
+from .. import config, db
+from ..ai.calllog import CallRecorder, emit
+from ..ai.llm import prompt_fingerprint
 
 PROMPT_VERSION = "market-v1"
 MIN_COMPARABLES = 3  # fewer than this is an anecdote, not a market
@@ -98,12 +99,17 @@ def gemini_search(query: str) -> list[dict]:
     retrieved, each with that page: its unsupported text could be from memory."""
     from google import genai
     from google.genai import types
+
     client = genai.Client()
-    prompt = ("List individual property listings for this search, each with its asking price, land area and "
-              f"built-up area exactly as the page states them: {query}")
+    prompt = (
+        "List individual property listings for this search, each with its asking price, land area and "
+        f"built-up area exactly as the page states them: {query}"
+    )
     reply = client.models.generate_content(
-        model=config.MARKET_SEARCH_MODEL, contents=prompt,
-        config=types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())]))
+        model=config.MARKET_SEARCH_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())]),
+    )
     meta = reply.candidates[0].grounding_metadata if reply.candidates else None
     if meta is None:
         return []
@@ -112,8 +118,9 @@ def gemini_search(query: str) -> list[dict]:
     for support in meta.grounding_supports or []:
         for i in support.grounding_chunk_indices or []:
             if i < len(chunks) and chunks[i].web and chunks[i].web.uri:
-                entry = found.setdefault(i, {"title": chunks[i].web.title or "", "url": _resolve(chunks[i].web.uri),
-                                             "snippets": []})
+                entry = found.setdefault(
+                    i, {"title": chunks[i].web.title or "", "url": _resolve(chunks[i].web.uri), "snippets": []}
+                )
                 entry["snippets"].append(support.segment.text)
     return list(found.values())
 
@@ -126,13 +133,16 @@ def brief(listing: dict) -> str:
     if listing.get("size_sqft"):
         area.append(f"built-up {float(listing['size_sqft']):g} sqft")
     place = ", ".join(dict.fromkeys(p for p in (listing.get("location"), listing.get("state")) if p))
-    return (f"Property: {str(listing['property_type']).replace('_', ' ')} for {listing['deal_type']} "
-            f"in {place or 'an unknown area'}. {'; '.join(area) or 'Size not given'}. "
-            f"Tenure: {listing.get('tenure') or 'not given'}. Title: {listing['title']}")
+    return (
+        f"Property: {str(listing['property_type']).replace('_', ' ')} for {listing['deal_type']} "
+        f"in {place or 'an unknown area'}. {'; '.join(area) or 'Size not given'}. "
+        f"Tenure: {listing.get('tenure') or 'not given'}. Title: {listing['title']}"
+    )
 
 
-def investigate(listing: dict, search=gemini_search, recorder: CallRecorder | None = None,
-                model=None) -> tuple[MarketFindings, Sources, int]:
+def investigate(
+    listing: dict, search=gemini_search, recorder: CallRecorder | None = None, model=None
+) -> tuple[MarketFindings, Sources, int]:
     """Run the Deep Agent on one listing. Its files live in memory for this run only, and web
     search is its only tool that reaches outside."""
     from deepagents import create_deep_agent
@@ -161,8 +171,13 @@ def investigate(listing: dict, search=gemini_search, recorder: CallRecorder | No
 
     if model is None:
         model = init_chat_model(config.MARKET_MODEL, timeout=120, max_retries=2)
-    agent = create_deep_agent(model=model, tools=[web_search], system_prompt=MARKET_SYSTEM,
-                              response_format=ToolStrategy(MarketFindings), name="market_check")
+    agent = create_deep_agent(
+        model=model,
+        tools=[web_search],
+        system_prompt=MARKET_SYSTEM,
+        response_format=ToolStrategy(MarketFindings),
+        name="market_check",
+    )
     run = {"recursion_limit": MAX_AGENT_STEPS, "callbacks": [recorder] if recorder else []}
     result = agent.invoke({"messages": [{"role": "user", "content": brief(listing)}]}, config=run)
     findings = result.get("structured_response")
@@ -234,9 +249,18 @@ def build_report(listing: dict, findings: MarketFindings, sources: Sources, sear
         if key in seen:
             continue
         seen.add(key)
-        kept.append({"title": c.title[:200], "location": c.location[:120], "price": c.price_rm, "area_sqft": comp_area,
-                     "per_sqft": c.price_rm / comp_area, "similarity": c.similarity[:300],
-                     "source_title": source["title"][:200], "url": source["url"]})
+        kept.append(
+            {
+                "title": c.title[:200],
+                "location": c.location[:120],
+                "price": c.price_rm,
+                "area_sqft": comp_area,
+                "per_sqft": c.price_rm / comp_area,
+                "similarity": c.similarity[:300],
+                "source_title": source["title"][:200],
+                "url": source["url"],
+            }
+        )
 
     rates = sorted(k["per_sqft"] for k in kept)
     enough = len(rates) >= MIN_COMPARABLES
@@ -244,19 +268,27 @@ def build_report(listing: dict, findings: MarketFindings, sources: Sources, sear
     if enough and per_sqft:
         position = "below" if per_sqft < rates[0] else "above" if per_sqft > rates[-1] else "within"
     return {
-        "as_of": date.today().isoformat(), "basis": basis, "listing_per_sqft": per_sqft,
-        "enough": enough, "position": position,
+        "as_of": date.today().isoformat(),
+        "basis": basis,
+        "listing_per_sqft": per_sqft,
+        "enough": enough,
+        "position": position,
         "median": statistics.median(rates) if enough else None,
-        "low": rates[0] if enough else None, "high": rates[-1] if enough else None,
-        "comparables": sorted(kept, key=lambda k: k["per_sqft"]), "dropped": dropped,
-        "notes": findings.notes[:600], "searches": searches,
+        "low": rates[0] if enough else None,
+        "high": rates[-1] if enough else None,
+        "comparables": sorted(kept, key=lambda k: k["per_sqft"]),
+        "dropped": dropped,
+        "notes": findings.notes[:600],
+        "searches": searches,
     }
 
 
 def facts_key(listing: dict) -> str:
     """Changes when something the comparison depends on changes, so the check is run again."""
-    parts = [listing.get(k) for k in ("property_type", "deal_type", "location", "state", "price", "size_sqft",
-                                      "land_area_acres", "tenure")]
+    parts = [
+        listing.get(k)
+        for k in ("property_type", "deal_type", "location", "state", "price", "size_sqft", "land_area_acres", "tenure")
+    ]
     return hashlib.sha256(json.dumps(parts, default=str).encode()).hexdigest()[:32]
 
 
@@ -287,8 +319,9 @@ def next_listing(conn) -> dict | None:
     now = conn.execute("SELECT now() AS t").fetchone()["t"]
     for listing in conn.execute(db.LISTING_CARD_SQL + " ORDER BY l.listing_id").fetchall():
         if _due(listing, states.get(listing["listing_id"]), now):
-            if conn.execute(CLAIM, {"id": listing["listing_id"], "key": facts_key(listing),
-                                    "lease": LEASE_MINUTES}).fetchone():
+            if conn.execute(
+                CLAIM, {"id": listing["listing_id"], "key": facts_key(listing), "lease": LEASE_MINUTES}
+            ).fetchone():
                 return listing
     return None
 
@@ -300,9 +333,23 @@ def _log_calls(conn, recorder: CallRecorder) -> None:
         cur.executemany(
             "INSERT INTO model_calls (job, step, model, served_by, is_fallback, ok, error, latency_ms, input_tokens, "
             "output_tokens, prompt_version, prompt_hash, settings) VALUES ('market_check',%s,%s,%s,false,%s,%s,%s,%s,%s,%s,%s,%s)",
-            [(c.get("step"), c.get("model") or config.MARKET_MODEL, c.get("served_by"), c.get("ok", False), c.get("error"),
-              c.get("latency_ms"), c.get("input_tokens"), c.get("output_tokens"), PROMPT_VERSION, fingerprint,
-              Jsonb({"max_searches": MAX_SEARCHES})) for c in recorder.calls])
+            [
+                (
+                    c.get("step"),
+                    c.get("model") or config.MARKET_MODEL,
+                    c.get("served_by"),
+                    c.get("ok", False),
+                    c.get("error"),
+                    c.get("latency_ms"),
+                    c.get("input_tokens"),
+                    c.get("output_tokens"),
+                    PROMPT_VERSION,
+                    fingerprint,
+                    Jsonb({"max_searches": MAX_SEARCHES}),
+                )
+                for c in recorder.calls
+            ],
+        )
 
 
 def check_next(search=gemini_search) -> str | None:
@@ -312,20 +359,26 @@ def check_next(search=gemini_search) -> str | None:
         listing = next_listing(conn)
     if listing is None:
         return None
-    listing_id, key, recorder = listing["listing_id"], facts_key(listing), CallRecorder()
+    listing_id, recorder = listing["listing_id"], CallRecorder()
     try:
         findings, sources, searches = investigate(listing, search, recorder)
         report = build_report(listing, findings, sources, searches)
     except Exception as exc:  # quota, a timeout: the check stays due and is tried again later
         print(f"market check failed for listing {listing_id}: {type(exc).__name__}: {exc}", flush=True)
         with db.connect() as conn:
-            conn.execute("UPDATE listing_market_checks SET status = 'failed', finished_at = now(), error = %s "
-                         "WHERE listing_id = %s", [f"{type(exc).__name__}: {exc}"[:1000], listing_id])
+            conn.execute(
+                "UPDATE listing_market_checks SET status = 'failed', finished_at = now(), error = %s "
+                "WHERE listing_id = %s",
+                [f"{type(exc).__name__}: {exc}"[:1000], listing_id],
+            )
             _log_calls(conn, recorder)
         return "failed"
     with db.connect() as conn:
-        conn.execute("UPDATE listing_market_checks SET status = 'done', finished_at = now(), report = %s, "
-                     "prompt_version = %s WHERE listing_id = %s", [Jsonb(report), PROMPT_VERSION, listing_id])
+        conn.execute(
+            "UPDATE listing_market_checks SET status = 'done', finished_at = now(), report = %s, "
+            "prompt_version = %s WHERE listing_id = %s",
+            [Jsonb(report), PROMPT_VERSION, listing_id],
+        )
         _log_calls(conn, recorder)
     print(f"market check done for listing {listing_id}: {len(report['comparables'])} comparables", flush=True)
     return "done"

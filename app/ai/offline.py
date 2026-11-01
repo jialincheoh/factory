@@ -4,15 +4,15 @@ It lets the site run and the tests pass without an API key. It does not look
 at photos or translate; the UI says so on every result it produces. It knows
 the common English and Malay terms for factories and warehouses.
 """
+
 import re
 import time
-from typing import Callable
+from collections.abc import Callable
 
 from .. import geo
 from . import pii
 from .llm import DECLINE_REPLIES
-from .schemas import (AMPS_PER_KVA, AdDraft, AdResult, ChatResult, ListingAnalysis, Mismatch, PropertyCard,
-                      SearchFilters)
+from .schemas import AMPS_PER_KVA, AdDraft, AdResult, ChatResult, ListingAnalysis, Mismatch, PropertyCard, SearchFilters
 
 FEATURES = {
     "overhead crane": ["overhead crane", "crane"],
@@ -85,8 +85,9 @@ def _amps(text: str):
 
 
 def _ceiling(text: str):
-    m = re.search(r"(\d+(?:\.\d+)?)\s*(?:ft|feet|')\s*(?:clear\s*)?(?:ceiling|height|tinggi)", text) or \
-        re.search(r"(?:ceiling|height)[^\d]{0,15}(\d+(?:\.\d+)?)\s*(?:ft|feet|')", text)
+    m = re.search(r"(\d+(?:\.\d+)?)\s*(?:ft|feet|')\s*(?:clear\s*)?(?:ceiling|height|tinggi)", text) or re.search(
+        r"(?:ceiling|height)[^\d]{0,15}(\d+(?:\.\d+)?)\s*(?:ft|feet|')", text
+    )
     if m:
         return float(m.group(1))
     m = re.search(r"(\d+(?:\.\d+)?)\s*m(?:etres?|eters?)?\s*(?:ceiling|height)", text)
@@ -122,9 +123,19 @@ def _container(text: str) -> bool:
 
 def _record(recorder, step: str, started: float) -> None:
     if recorder is not None:
-        recorder.calls.append({"step": step, "model": OfflineAssistant.model_name, "temperature": None,
-                               "latency_ms": int((time.monotonic() - started) * 1000), "ok": True, "error": None,
-                               "served_by": OfflineAssistant.model_name, "input_tokens": None, "output_tokens": None})
+        recorder.calls.append(
+            {
+                "step": step,
+                "model": OfflineAssistant.model_name,
+                "temperature": None,
+                "latency_ms": int((time.monotonic() - started) * 1000),
+                "ok": True,
+                "error": None,
+                "served_by": OfflineAssistant.model_name,
+                "input_tokens": None,
+                "output_tokens": None,
+            }
+        )
 
 
 class OfflineAssistant:
@@ -141,10 +152,15 @@ class OfflineAssistant:
         description = pii.mask(description)
         text = description.lower()
         price = None
-        m = re.search(r"(?:rm|\$|price|harga|asking|rent|sewa)\s*:?\s*(?:rm|\$)?\s*([\d,]+(?:\.\d+)?)\s*(k|m|mil|million|juta)?\b", text)
+        m = re.search(
+            r"(?:rm|\$|price|harga|asking|rent|sewa)\s*:?\s*(?:rm|\$)?\s*([\d,]+(?:\.\d+)?)\s*(k|m|mil|million|juta)?\b",
+            text,
+        )
         if m:
             price = _money(m.group(1), m.group(2))
-        built = re.search(r"([\d,]{3,})\s*(?:sq\.?\s*ft|sqft|square feet|kaki persegi)\s*(?:built|floor|bangunan)?", text)
+        built = re.search(
+            r"([\d,]{3,})\s*(?:sq\.?\s*ft|sqft|square feet|kaki persegi)\s*(?:built|floor|bangunan)?", text
+        )
         area = geo.find_area(description)
         amps, kva = _amps(text)
         types = _types(text)
@@ -170,45 +186,70 @@ class OfflineAssistant:
         deal = "for rent" if card.deal_type == "rent" else "for sale"
         card.title = f"{kind.capitalize()} {deal}{where}"
 
-        specs = [s for s in [
-            f"{card.land_area_acres:g} acres of land" if card.land_area_acres else None,
-            f"{card.size_sqft:,} sqft built-up" if card.size_sqft else None,
-            f"{card.power_amps}A power" if card.power_amps else (f"{card.power_kva} kVA power" if card.power_kva else None),
-            f"{card.ceiling_height_ft:g} ft ceiling" if card.ceiling_height_ft else None,
-            card.tenure,
-            "40-ft container access" if card.container_access else None,
-        ] if s]
+        specs = [
+            s
+            for s in [
+                f"{card.land_area_acres:g} acres of land" if card.land_area_acres else None,
+                f"{card.size_sqft:,} sqft built-up" if card.size_sqft else None,
+                f"{card.power_amps}A power"
+                if card.power_amps
+                else (f"{card.power_kva} kVA power" if card.power_kva else None),
+                f"{card.ceiling_height_ft:g} ft ceiling" if card.ceiling_height_ft else None,
+                card.tenure,
+                "40-ft container access" if card.container_access else None,
+            ]
+            if s
+        ]
         spec_line = ", ".join(specs) or "practical specifications"
         angles = [
             (f"{card.title}", f"{description.strip()} Key specs: {spec_line}. Contact us to arrange a site visit."),
-            (f"Ready for operations{where}", f"Built for logistics and manufacturing: {spec_line}. {description.strip()}"),
-            (f"Strategic {kind}{where}", f"A sound long-term asset for owner-occupiers and investors. {description.strip()}"),
+            (
+                f"Ready for operations{where}",
+                f"Built for logistics and manufacturing: {spec_line}. {description.strip()}",
+            ),
+            (
+                f"Strategic {kind}{where}",
+                f"A sound long-term asset for owner-occupiers and investors. {description.strip()}",
+            ),
         ]
         # Without a model the photos are not looked at: each draft simply leads with a different photo.
-        drafts = [AdDraft(headline=h[:70], body=b, cover_photo=i % len(images) + 1 if images else None)
-                  for i, (h, b) in enumerate((angles * n_drafts)[:n_drafts])]
+        drafts = [
+            AdDraft(headline=h[:70], body=b, cover_photo=i % len(images) + 1 if images else None)
+            for i, (h, b) in enumerate((angles * n_drafts)[:n_drafts])
+        ]
         analysis = ListingAnalysis(
             detected_language="not detected (offline mode)",
             english_description=description.strip(),
             card=card,
-            mismatches=[Mismatch(
-                claim=f"{len(images)} photo(s) uploaded",
-                finding="Photos were not checked against the description: the site is running in offline mode "
-                        "without a language model.",
-                severity="info",
-            )],
+            mismatches=[
+                Mismatch(
+                    claim=f"{len(images)} photo(s) uploaded",
+                    finding="Photos were not checked against the description: the site is running in offline mode "
+                    "without a language model.",
+                    severity="info",
+                )
+            ],
             drafts=drafts,
         )
         # Drafts reuse the description and card as written, so there is nothing to check.
         _record(recorder, "analyse", started)
-        return AdResult(analysis, f"[offline rules, {len(images)} photo(s)]\n{description}", self.model_name,
-                        [{"checked": False, "unsupported_claims": [], "earlier_versions": []} for _ in drafts])
+        return AdResult(
+            analysis,
+            f"[offline rules, {len(images)} photo(s)]\n{description}",
+            self.model_name,
+            [{"checked": False, "unsupported_claims": [], "earlier_versions": []} for _ in drafts],
+        )
 
     async def astream_ads(self, description: str, images: list[tuple[bytes, str]], n_drafts: int, recorder=None):
         """Same interface as LLMAssistant.astream_ads: progress lines, then the result."""
         result = self.write_ads(description, images, n_drafts, recorder)
-        yield "step", (f"Read the description, filled the property card and wrote {len(result.analysis.drafts)} "
-                       "drafts (offline rules; photos not checked).")
+        yield (
+            "step",
+            (
+                f"Read the description, filled the property card and wrote {len(result.analysis.drafts)} "
+                "drafts (offline rules; photos not checked)."
+            ),
+        )
         yield "result", result
 
     def revise(self, analysis, i: int, feedback: str):
@@ -227,8 +268,14 @@ class OfflineAssistant:
         _record(recorder, "transcribe", time.monotonic())
         return ""
 
-    def search_chat(self, history: list[dict], run_search: Callable[[SearchFilters], list[dict]],
-                    current: SearchFilters | None = None, recorder=None, image=None) -> ChatResult:
+    def search_chat(
+        self,
+        history: list[dict],
+        run_search: Callable[[SearchFilters], list[dict]],
+        current: SearchFilters | None = None,
+        recorder=None,
+        image=None,
+    ) -> ChatResult:
         # A photo cannot be read offline; the words sent with it are still searched.
         started = time.monotonic()
         latest = history[-1]["content"].lower() if history else ""
@@ -268,7 +315,10 @@ class OfflineAssistant:
 
         results = run_search(f)
         n = len(results)
-        reply = (f"I found {n} listing{'s' if n != 1 else ''} that match{'es' if n == 1 else ''}." if n
-                 else "Nothing matches all of that yet. Try dropping a requirement or widening the area.")
+        reply = (
+            f"I found {n} listing{'s' if n != 1 else ''} that match{'es' if n == 1 else ''}."
+            if n
+            else "Nothing matches all of that yet. Try dropping a requirement or widening the area."
+        )
         _record(recorder, "search_chat", started)
         return ChatResult(reply + " (Offline mode: simple keyword matching.)", f, results, self.model_name)

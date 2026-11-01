@@ -7,17 +7,16 @@ photos and go through images.process_upload like any upload (re-encoded, no
 metadata). A brochure without usable embedded images is rendered page by page,
 so a scanned brochure still gives the model something to look at.
 """
-import io
 
 import pymupdf
 
-from . import config
+from .. import config
 
 MAX_BYTES = 20 * 1024 * 1024
 MAX_PAGES = 30
-MAX_TEXT = 5000       # characters kept from the brochure
+MAX_TEXT = 5000  # characters kept from the brochure
 MIN_IMAGE_SIDE = 300  # smaller embedded images are logos and icons
-RENDER_DPI = 110      # about 1200 px across an A4 page
+RENDER_DPI = 110  # about 1200 px across an A4 page
 
 
 class BrochureError(ValueError):
@@ -48,9 +47,11 @@ def _clean(text: str) -> str:
     out, blank = [], False
     for line in lines:  # collapse runs of blank lines
         if line:
-            out.append(line); blank = False
+            out.append(line)
+            blank = False
         elif not blank:
-            out.append(""); blank = True
+            out.append("")
+            blank = True
     return "\n".join(out).strip()
 
 

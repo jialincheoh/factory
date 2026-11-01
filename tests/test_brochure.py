@@ -1,20 +1,23 @@
 """Brochure PDFs: text comes out clean and capped, usable pictures come out, junk is refused."""
+
 import io
 
 import pymupdf
 import pytest
 from PIL import Image
 
-from app import brochure, images
+from app.services import brochure, images
 
 
 def photo_png(w=800, h=600, colour=(90, 120, 200)) -> bytes:
-    buf = io.BytesIO(); Image.new("RGB", (w, h), colour).save(buf, "PNG"); return buf.getvalue()
+    buf = io.BytesIO()
+    Image.new("RGB", (w, h), colour).save(buf, "PNG")
+    return buf.getvalue()
 
 
 def make_pdf(text: str, pictures: list[bytes] = (), pages: int = 1) -> bytes:
     doc = pymupdf.open()
-    for n in range(pages):
+    for _ in range(pages):
         page = doc.new_page(width=595, height=842)
         page.insert_text((40, 60), text, fontsize=11)
         for i, pic in enumerate(pictures):
@@ -23,8 +26,10 @@ def make_pdf(text: str, pictures: list[bytes] = (), pages: int = 1) -> bytes:
 
 
 def test_text_and_embedded_photos_come_out():
-    pdf = make_pdf("Kilang dijual di Senai.\n\n\n\n400A   power,  2 ekar. Call 012-345 6789",
-                   [photo_png(), photo_png(1000, 700, (200, 50, 50)), photo_png(64, 64)])  # last one is a logo
+    pdf = make_pdf(
+        "Kilang dijual di Senai.\n\n\n\n400A   power,  2 ekar. Call 012-345 6789",
+        [photo_png(), photo_png(1000, 700, (200, 50, 50)), photo_png(64, 64)],
+    )  # last one is a logo
     text, pics = brochure.extract(pdf)
     assert "Kilang dijual di Senai." in text and "400A power, 2 ekar." in text
     assert "\n\n\n" not in text  # blank runs collapsed

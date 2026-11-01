@@ -1,0 +1,24 @@
+[project]
+name = "factory"
+version = "1.0.0"
+description = "Listings portal for factories, warehouses and land, with human-reviewed AI ad drafts and chat search."
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["app/static"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S110"]
+ignore = [
+    "E501",   # the formatter owns line length; what remains is SQL and user-facing text
+    "B008",   # Depends(), Form() and File() in argument defaults are how FastAPI declares inputs
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning:importlib._bootstrap"]

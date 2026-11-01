@@ -9,6 +9,7 @@ thread (start_worker) or `python -m scripts.render_videos` picks up any listing 
 on whose video is missing or was made from a different set of photos. Finished videos are stored in the
 database, as photos are; UPLOAD_DIR is only a cache.
 """
+
 import hashlib
 import io
 import os
@@ -21,7 +22,8 @@ from pathlib import Path
 import imageio_ffmpeg
 from PIL import Image, ImageFilter, ImageOps
 
-from . import config, db, images
+from .. import config, db
+from . import images
 
 WIDTH, HEIGHT = 960, 540
 FPS = 24
@@ -37,10 +39,10 @@ POLL_SECONDS = 60
 # Each motion is (zoom, x, y) for ffmpeg's zoompan filter; PROGRESS runs from 0 to 1 over the clip.
 _CENTRE = ("iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)")
 _MOTIONS = [
-    (f"1+{ZOOM}*PROGRESS", *_CENTRE),                                # push in
-    (f"{1 + ZOOM}", "(iw-iw/zoom)*PROGRESS", _CENTRE[1]),            # pan right
-    (f"{1 + ZOOM}-{ZOOM}*PROGRESS", *_CENTRE),                       # pull out
-    (f"{1 + ZOOM}", "(iw-iw/zoom)*(1-PROGRESS)", _CENTRE[1]),        # pan left
+    (f"1+{ZOOM}*PROGRESS", *_CENTRE),  # push in
+    (f"{1 + ZOOM}", "(iw-iw/zoom)*PROGRESS", _CENTRE[1]),  # pan right
+    (f"{1 + ZOOM}-{ZOOM}*PROGRESS", *_CENTRE),  # pull out
+    (f"{1 + ZOOM}", "(iw-iw/zoom)*(1-PROGRESS)", _CENTRE[1]),  # pan left
 ]
 
 
@@ -73,8 +75,10 @@ def _filter_graph(photo_count: int) -> tuple[str, str]:
     parts = []
     for i in range(photo_count):
         zoom, x, y = (expr.replace("PROGRESS", f"(on/{frames - 1})") for expr in _MOTIONS[i % len(_MOTIONS)])
-        parts.append(f"[{i}:v]zoompan=z='{zoom}':x='{x}':y='{y}':d={frames}:s={WIDTH}x{HEIGHT}:fps={FPS},"
-                     f"setsar=1,format=yuv420p[p{i}]")
+        parts.append(
+            f"[{i}:v]zoompan=z='{zoom}':x='{x}':y='{y}':d={frames}:s={WIDTH}x{HEIGHT}:fps={FPS},"
+            f"setsar=1,format=yuv420p[p{i}]"
+        )
     last = "p0"
     for i in range(1, photo_count):
         offset = i * (SECONDS_PER_PHOTO - FADE_SECONDS)
@@ -96,11 +100,41 @@ def render(photos: list[bytes]) -> bytes:
             inputs += ["-i", str(path)]
         graph, last = _filter_graph(len(photos))
         out = tmp / "tour.mp4"
-        cmd = ["nice", "-n", "19", imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-y",
-               "-filter_threads", "1", "-filter_complex_threads", "1", *inputs,
-               "-filter_complex", graph, "-map", f"[{last}]", "-an",
-               "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-profile:v", "main",
-               "-pix_fmt", "yuv420p", "-threads", "1", "-movflags", "+faststart", str(out)]
+        cmd = [
+            "nice",
+            "-n",
+            "19",
+            imageio_ffmpeg.get_ffmpeg_exe(),
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-filter_threads",
+            "1",
+            "-filter_complex_threads",
+            "1",
+            *inputs,
+            "-filter_complex",
+            graph,
+            "-map",
+            f"[{last}]",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "26",
+            "-profile:v",
+            "main",
+            "-pix_fmt",
+            "yuv420p",
+            "-threads",
+            "1",
+            "-movflags",
+            "+faststart",
+            str(out),
+        ]
         try:
             subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=RENDER_TIMEOUT_SECONDS)
         except subprocess.CalledProcessError as exc:
@@ -171,15 +205,19 @@ def render_next() -> bool:
     except Exception as exc:  # ffmpeg, an unreadable photo: record it and carry on with other listings
         print(f"video failed for listing {listing_id}: {exc}", flush=True)
         with db.connect() as conn:
-            conn.execute("UPDATE listing_videos SET status = 'failed', error = %s "
-                         "WHERE listing_id = %s AND photos_key = %s", [str(exc)[:1000], listing_id, key])
+            conn.execute(
+                "UPDATE listing_videos SET status = 'failed', error = %s WHERE listing_id = %s AND photos_key = %s",
+                [str(exc)[:1000], listing_id, key],
+            )
         return True
     name = f"{uuid.uuid4().hex}.mp4"
     with db.connect() as conn:
         # The photos may have changed during the render: then this film is out of date and is dropped.
-        conn.execute("UPDATE listing_videos SET status = 'ready', file_name = %s, data = %s, photo_count = %s, "
-                     "seconds = %s, finished_at = now() WHERE listing_id = %s AND photos_key = %s",
-                     [name, data, len(photos), duration_seconds(len(photos)), listing_id, key])
+        conn.execute(
+            "UPDATE listing_videos SET status = 'ready', file_name = %s, data = %s, photo_count = %s, "
+            "seconds = %s, finished_at = now() WHERE listing_id = %s AND photos_key = %s",
+            [name, data, len(photos), duration_seconds(len(photos)), listing_id, key],
+        )
     print(f"video ready for listing {listing_id}: {len(photos)} photos, {len(data)} bytes", flush=True)
     return True
 

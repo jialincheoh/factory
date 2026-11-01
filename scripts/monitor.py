@@ -15,6 +15,7 @@ What it watches:
   * search: failed, declined and zero-result searches, and per visit whether a
     typed search led to opening a listing or revealing a phone number
 """
+
 import argparse
 import sys
 
@@ -109,10 +110,12 @@ def report(conn, days: int) -> list[str]:
     latency = {r["job"]: r for r in conn.execute(REQUEST_LATENCY, p)}
     for r in conn.execute(CALLS, p):
         lat = latency.get(r["job"], {})
-        print(f"  {r['job']}: {r['calls']} calls, failed {pct(r['failure_rate'])} "
-              f"({r['format_failures']} invalid output), fallback {pct(r['fallback_rate'])}, "
-              f"{lat.get('requests', 0)} requests, p50 {lat.get('p50_ms') or 0:.0f} ms, "
-              f"p95 {lat.get('p95_ms') or 0:.0f} ms, tokens in/out {r['input_tokens'] or 0}/{r['output_tokens'] or 0}")
+        print(
+            f"  {r['job']}: {r['calls']} calls, failed {pct(r['failure_rate'])} "
+            f"({r['format_failures']} invalid output), fallback {pct(r['fallback_rate'])}, "
+            f"{lat.get('requests', 0)} requests, p50 {lat.get('p50_ms') or 0:.0f} ms, "
+            f"p95 {lat.get('p95_ms') or 0:.0f} ms, tokens in/out {r['input_tokens'] or 0}/{r['output_tokens'] or 0}"
+        )
         if r["failure_rate"] > MAX_FAILURE_RATE:
             alerts.append(f"{r['job']}: {pct(r['failure_rate'])} of model calls failed")
         if r["fallback_rate"] > MAX_FALLBACK_RATE:
@@ -121,26 +124,36 @@ def report(conn, days: int) -> list[str]:
             alerts.append(f"{r['job']}: slowest 5% of requests take over {lat['p95_ms'] / 1000:.0f} s")
 
     for r in conn.execute(NEW_SERVED_BY, p):
-        alerts.append(f"{r['model']} is now reported as {r['served_by']} (since {r['first_seen']:%Y-%m-%d %H:%M}): "
-                      "rerun the level-1 evaluation")
+        alerts.append(
+            f"{r['model']} is now reported as {r['served_by']} (since {r['first_seen']:%Y-%m-%d %H:%M}): "
+            "rerun the level-1 evaluation"
+        )
     for r in conn.execute(PROMPT_EDITS):
-        alerts.append(f"prompt version {r['prompt_version']} ran with {len(r['hashes'])} different prompts: "
-                      "bump the version when a prompt changes")
+        alerts.append(
+            f"prompt version {r['prompt_version']} ran with {len(r['hashes'])} different prompts: "
+            "bump the version when a prompt changes"
+        )
 
     d = conn.execute(DRAFT_CHECK, p).fetchone()
-    print(f"\nDraft check: {d['drafts']} drafts, flagged {pct(d['flagged_rate'])}, "
-          f"rewritten {pct(d['rewritten_rate'])}, unchecked {pct(d['unchecked_rate'])}")
+    print(
+        f"\nDraft check: {d['drafts']} drafts, flagged {pct(d['flagged_rate'])}, "
+        f"rewritten {pct(d['rewritten_rate'])}, unchecked {pct(d['unchecked_rate'])}"
+    )
     if d["drafts"] and d["unchecked_rate"] > MAX_UNCHECKED_RATE:
         alerts.append(f"{pct(d['unchecked_rate'])} of drafts reached agents unchecked")
 
     s = conn.execute(SEARCHES, p).fetchone()
     t = conn.execute(SEARCH_TASKS, p).fetchone()
-    print(f"\nTyped searches: {s['typed']}, failed {pct(s['error_rate'])}, declined {pct(s['declined_rate'])}, "
-          f"no results {pct(s['zero_result_rate'])}")
+    print(
+        f"\nTyped searches: {s['typed']}, failed {pct(s['error_rate'])}, declined {pct(s['declined_rate'])}, "
+        f"no results {pct(s['zero_result_rate'])}"
+    )
     median = t["median_messages_to_open"]
-    print(f"Search visits: {t['visits']}, opened a listing {pct(t['opened_rate'])}, "
-          f"revealed a phone {pct(t['revealed_rate'])}, median typed messages to first open "
-          + ("-" if median is None else f"{median:.0f}"))
+    print(
+        f"Search visits: {t['visits']}, opened a listing {pct(t['opened_rate'])}, "
+        f"revealed a phone {pct(t['revealed_rate'])}, median typed messages to first open "
+        + ("-" if median is None else f"{median:.0f}")
+    )
     if s["typed"] and s["error_rate"] > MAX_SEARCH_ERROR_RATE:
         alerts.append(f"{pct(s['error_rate'])} of typed searches failed")
 

@@ -5,7 +5,8 @@
 Uses model and web search quota for each listing. A failure stops the run, because the
 usual cause is a quota that the remaining listings would hit too.
 """
-from app import market
+
+from app.services import market
 
 
 def main() -> None:

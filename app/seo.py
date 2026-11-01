@@ -1,6 +1,7 @@
 """Search-engine helpers: readable URLs, landing pages for the searches
 people type into Google ("factory for sale shah alam"), and schema.org data.
 """
+
 import json
 import re
 
@@ -14,10 +15,18 @@ LANDING = {
     "warehouse-for-rent": (["warehouse"], "rent", "Warehouses for rent", "Gudang untuk disewa"),
     "land-for-sale": (["land"], "sale", "Industrial and commercial land for sale", "Tanah untuk dijual"),
     "land-for-rent": (["land"], "rent", "Industrial and commercial land for rent", "Tanah untuk disewa"),
-    "commercial-building-for-sale": (["commercial_building"], "sale", "Commercial buildings for sale",
-                                     "Bangunan komersial untuk dijual"),
-    "commercial-building-for-rent": (["commercial_building"], "rent", "Commercial buildings for rent",
-                                     "Bangunan komersial untuk disewa"),
+    "commercial-building-for-sale": (
+        ["commercial_building"],
+        "sale",
+        "Commercial buildings for sale",
+        "Bangunan komersial untuk dijual",
+    ),
+    "commercial-building-for-rent": (
+        ["commercial_building"],
+        "rent",
+        "Commercial buildings for rent",
+        "Bangunan komersial untuk disewa",
+    ),
 }
 
 
@@ -61,14 +70,24 @@ def _clean(obj):
 
 def to_script(data) -> str:
     """JSON-LD safe to place inside <script type="application/ld+json">."""
-    return json.dumps(_clean(data), ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    return (
+        json.dumps(_clean(data), ensure_ascii=False)
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+    )
 
 
 def breadcrumbs(items: list[tuple[str, str]]) -> dict:
     """items: [(name, path), ...] from the home page down."""
-    return {"@context": "https://schema.org", "@type": "BreadcrumbList",
-            "itemListElement": [{"@type": "ListItem", "position": i, "name": name, "item": absolute(path)}
-                                for i, (name, path) in enumerate(items, 1)]}
+    return {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {"@type": "ListItem", "position": i, "name": name, "item": absolute(path)}
+            for i, (name, path) in enumerate(items, 1)
+        ],
+    }
 
 
 def listing_jsonld(listing: dict, photos: list[str]) -> dict:
@@ -86,37 +105,65 @@ def listing_jsonld(listing: dict, photos: list[str]) -> dict:
             "@type": "Offer",
             "price": float(listing["price"]) if listing.get("price") else None,
             "priceCurrency": config.CURRENCY_CODE,
-            "businessFunction": "http://purl.org/goodrelations/v1#" + ("LeaseOut" if listing.get("deal_type") == "rent" else "Sell"),
+            "businessFunction": "http://purl.org/goodrelations/v1#"
+            + ("LeaseOut" if listing.get("deal_type") == "rent" else "Sell"),
             "availability": "https://schema.org/InStock",
         },
         "about": {
             "@type": "Place",
             "name": listing.get("title"),
-            "address": {"@type": "PostalAddress", "addressLocality": listing.get("location"),
-                        "addressRegion": listing.get("state"), "addressCountry": "MY"},
-            "geo": {"@type": "GeoCoordinates", "latitude": listing.get("latitude"),
-                    "longitude": listing.get("longitude")} if listing.get("latitude") is not None else None,
+            "address": {
+                "@type": "PostalAddress",
+                "addressLocality": listing.get("location"),
+                "addressRegion": listing.get("state"),
+                "addressCountry": "MY",
+            },
+            "geo": {
+                "@type": "GeoCoordinates",
+                "latitude": listing.get("latitude"),
+                "longitude": listing.get("longitude"),
+            }
+            if listing.get("latitude") is not None
+            else None,
             "additionalProperty": [
                 {"@type": "PropertyValue", "name": name, "value": value, "unitText": unit}
                 for name, value, unit in (
                     ("Built-up area", sqft, "sqft"),
                     ("Land area", land_sqft, "sqft"),
-                    ("Power supply", listing.get("power_amps") or listing.get("power_kva"),
-                     "A" if listing.get("power_amps") else "kVA"),
-                    ("Ceiling height", float(listing["ceiling_height_ft"]) if listing.get("ceiling_height_ft") else None, "ft"),
+                    (
+                        "Power supply",
+                        listing.get("power_amps") or listing.get("power_kva"),
+                        "A" if listing.get("power_amps") else "kVA",
+                    ),
+                    (
+                        "Ceiling height",
+                        float(listing["ceiling_height_ft"]) if listing.get("ceiling_height_ft") else None,
+                        "ft",
+                    ),
                     ("Tenure", listing.get("tenure"), None),
                     ("Container access", "yes" if listing.get("container_access") else None, None),
-                ) if value is not None
+                )
+                if value is not None
             ],
         },
     }
 
 
 def site_jsonld() -> dict:
-    return {"@context": "https://schema.org", "@type": "WebSite", "name": config.SITE_NAME, "url": absolute("/"),
-            "inLanguage": ["en-MY", "ms-MY"]}
+    return {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": config.SITE_NAME,
+        "url": absolute("/"),
+        "inLanguage": ["en-MY", "ms-MY"],
+    }
 
 
 def organization_jsonld() -> dict:
-    return {"@context": "https://schema.org", "@type": "Organization", "name": config.SITE_NAME,
-            "url": absolute("/"), "logo": absolute("/static/icon-512.png")}
+    return {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": config.SITE_NAME,
+        "url": absolute("/"),
+        "logo": absolute("/static/icon-512.png"),
+    }

@@ -1,4 +1,5 @@
 """Video tours: real ffmpeg renders, stored in the test database and served over HTTP."""
+
 import io
 import re
 import subprocess
@@ -12,8 +13,9 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from app import config, images, security, video
+from app import config, security
 from app.main import app
+from app.services import images, video
 
 COLOURS = [(190, 60, 50), (50, 150, 70), (50, 80, 190), (210, 180, 60)]
 
@@ -29,8 +31,9 @@ def probe(data: bytes) -> str:
     with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
         f.write(data)
         f.flush()
-        return subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-i", f.name],
-                              capture_output=True, text=True).stderr
+        return subprocess.run(
+            [imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-i", f.name], capture_output=True, text=True
+        ).stderr
 
 
 def seconds_in(info: str) -> float:
@@ -42,13 +45,26 @@ def frame_colour(data: bytes, at: float) -> tuple[int, int, int]:
     with tempfile.TemporaryDirectory() as tmp:
         src, out = Path(tmp) / "v.mp4", Path(tmp) / "f.png"
         src.write_bytes(data)
-        subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-loglevel", "error", "-ss", str(at), "-i", str(src),
-                        "-frames:v", "1", str(out)], check=True)
+        subprocess.run(
+            [
+                imageio_ffmpeg.get_ffmpeg_exe(),
+                "-loglevel",
+                "error",
+                "-ss",
+                str(at),
+                "-i",
+                str(src),
+                "-frames:v",
+                "1",
+                str(out),
+            ],
+            check=True,
+        )
         return Image.open(out).convert("RGB").getpixel((480, 270))
 
 
 def close_to(actual, expected, tolerance=30) -> bool:
-    return all(abs(a - e) <= tolerance for a, e in zip(actual, expected))
+    return all(abs(a - e) <= tolerance for a, e in zip(actual, expected, strict=True))
 
 
 def drain():
@@ -65,26 +81,37 @@ def video_row(listing_id):
 def agent():
     agent_id = uuid.uuid4()
     with psycopg.connect(config.DATABASE_URL) as conn:
-        conn.execute("INSERT INTO real_estate_agents (real_estate_agent_id, display_name, email, password_hash, phone) "
-                     "VALUES (%s, 'Video Agent', %s, %s, '+00 5555 0001')",
-                     [agent_id, f"{agent_id}@example.com", security.hash_password("correct-horse-battery")])
+        conn.execute(
+            "INSERT INTO real_estate_agents (real_estate_agent_id, display_name, email, password_hash, phone) "
+            "VALUES (%s, 'Video Agent', %s, %s, '+00 5555 0001')",
+            [agent_id, f"{agent_id}@example.com", security.hash_password("correct-horse-battery")],
+        )
     return agent_id
 
 
-def make_listing(agent_id, photos: list[bytes], status="published", title="Video test factory",
-                 video_on=True) -> uuid.UUID:
+def make_listing(
+    agent_id, photos: list[bytes], status="published", title="Video test factory", video_on=True
+) -> uuid.UUID:
     listing_id = uuid.uuid4()
     with psycopg.connect(config.DATABASE_URL, row_factory=psycopg.rows.dict_row) as conn:
-        conn.execute("INSERT INTO listings (listing_id, real_estate_agent_id, status, title, property_type, deal_type, "
-                     "location, state, price_listed, cover_position, video_enabled) "
-                     "VALUES (%s,%s,%s,%s,'factory','sale','Shah Alam','Selangor',1000000,1,%s)",
-                     [listing_id, agent_id, status, title, video_on])
-        conn.execute("INSERT INTO published_ads (ad_id, listing_id, channel, published_at, headline, ad_text) "
-                     "VALUES (%s,%s,'own_portal',now(),'h','b')", [uuid.uuid4(), listing_id])
+        conn.execute(
+            "INSERT INTO listings (listing_id, real_estate_agent_id, status, title, property_type, deal_type, "
+            "location, state, price_listed, cover_position, video_enabled) "
+            "VALUES (%s,%s,%s,%s,'factory','sale','Shah Alam','Selangor',1000000,1,%s)",
+            [listing_id, agent_id, status, title, video_on],
+        )
+        conn.execute(
+            "INSERT INTO published_ads (ad_id, listing_id, channel, published_at, headline, ad_text) "
+            "VALUES (%s,%s,'own_portal',now(),'h','b')",
+            [uuid.uuid4(), listing_id],
+        )
         for position, data in enumerate(photos, start=1):
             name = images.save(data, conn)
-            conn.execute("INSERT INTO listing_images (image_id, listing_id, position, file_name, width, height) "
-                         "VALUES (%s,%s,%s,%s,800,450)", [uuid.uuid4(), listing_id, position, name])
+            conn.execute(
+                "INSERT INTO listing_images (image_id, listing_id, position, file_name, width, height) "
+                "VALUES (%s,%s,%s,%s,800,450)",
+                [uuid.uuid4(), listing_id, position, name],
+            )
     return listing_id
 
 
@@ -164,7 +191,9 @@ def test_which_listings_get_videos(agent):
     draft = make_listing(agent, [photo(c) for c in COLOURS[:2]], status="draft")
     sold = make_listing(agent, [photo(c) for c in COLOURS[:2]])
     with psycopg.connect(config.DATABASE_URL) as conn:
-        conn.execute("INSERT INTO outcomes (listing_id, status, ended_at, sold_price) VALUES (%s,'sold',now(),1)", [sold])
+        conn.execute(
+            "INSERT INTO outcomes (listing_id, status, ended_at, sold_price) VALUES (%s,'sold',now(),1)", [sold]
+        )
     drain()
     assert video_row(single) is None and video_row(draft) is None and video_row(sold) is None
 
@@ -230,13 +259,15 @@ def test_a_render_in_progress_is_not_started_twice_but_a_dead_one_is_retried(age
     listing_id = make_listing(agent, [photo(c) for c in COLOURS[:2]])
     with psycopg.connect(config.DATABASE_URL, row_factory=psycopg.rows.dict_row) as conn:
         row = next(r for r in video.pending(conn) if r["listing_id"] == listing_id)
-        conn.execute(video.CLAIM, {"id": listing_id, "key": video.photos_key(row["names"]),
-                                   "lease": video.LEASE_MINUTES})
+        conn.execute(
+            video.CLAIM, {"id": listing_id, "key": video.photos_key(row["names"]), "lease": video.LEASE_MINUTES}
+        )
     assert not video.render_next()  # another worker holds the lease
 
     with psycopg.connect(config.DATABASE_URL) as conn:
-        conn.execute("UPDATE listing_videos SET started_at = now() - interval '2 hours' WHERE listing_id = %s",
-                     [listing_id])
+        conn.execute(
+            "UPDATE listing_videos SET started_at = now() - interval '2 hours' WHERE listing_id = %s", [listing_id]
+        )
     drain()
     row = video_row(listing_id)
     assert row["status"] == "ready" and row["attempts"] == 2
@@ -245,8 +276,11 @@ def test_a_render_in_progress_is_not_started_twice_but_a_dead_one_is_retried(age
 def signed_in(agent_id):
     client = TestClient(app)
     token = re.search(r'name="csrf" value="([^"]+)"', client.get("/agent/login").text)[1]
-    r = client.post("/agent/login", data={"email": f"{agent_id}@example.com", "password": "correct-horse-battery",
-                                          "csrf": token}, follow_redirects=False)
+    r = client.post(
+        "/agent/login",
+        data={"email": f"{agent_id}@example.com", "password": "correct-horse-battery", "csrf": token},
+        follow_redirects=False,
+    )
     assert r.status_code == 303
     return client, re.search(r'name="csrf" value="([^"]+)"', client.get("/agent/new").text)[1]
 
@@ -258,10 +292,17 @@ def toggle(client, token, listing_id):
 def test_video_is_off_until_the_agent_turns_it_on(agent):
     listing_id = make_listing(agent, [photo(c) for c in COLOURS[:2]], title="Off by default", video_on=False)
     with psycopg.connect(config.DATABASE_URL) as conn:
-        conn.execute("INSERT INTO listings (listing_id, real_estate_agent_id, status, title, property_type, deal_type) "
-                     "VALUES (%s,%s,'draft','Column default','factory','sale')", [uuid.uuid4(), agent])
-        assert conn.execute("SELECT count(*) FROM listings WHERE title = 'Column default' AND NOT video_enabled"
-                            ).fetchone()[0] == 1
+        conn.execute(
+            "INSERT INTO listings (listing_id, real_estate_agent_id, status, title, property_type, deal_type) "
+            "VALUES (%s,%s,'draft','Column default','factory','sale')",
+            [uuid.uuid4(), agent],
+        )
+        assert (
+            conn.execute(
+                "SELECT count(*) FROM listings WHERE title = 'Column default' AND NOT video_enabled"
+            ).fetchone()[0]
+            == 1
+        )
     drain()
     assert video_row(listing_id) is None
     visitor = TestClient(app)
@@ -294,14 +335,19 @@ def test_only_the_listing_agent_can_switch_video(agent):
     listing_id = make_listing(agent, [photo(c) for c in COLOURS[:2]], title="Not yours", video_on=False)
     other = uuid.uuid4()
     with psycopg.connect(config.DATABASE_URL) as conn:
-        conn.execute("INSERT INTO real_estate_agents (real_estate_agent_id, display_name, email, password_hash, phone) "
-                     "VALUES (%s, 'Other', %s, %s, '+00 5555 0003')",
-                     [other, f"{other}@example.com", security.hash_password("correct-horse-battery")])
+        conn.execute(
+            "INSERT INTO real_estate_agents (real_estate_agent_id, display_name, email, password_hash, phone) "
+            "VALUES (%s, 'Other', %s, %s, '+00 5555 0003')",
+            [other, f"{other}@example.com", security.hash_password("correct-horse-battery")],
+        )
     client, token = signed_in(other)
     assert toggle(client, token, listing_id).status_code == 404
     assert client.post(f"/agent/listings/{listing_id}/video", data={}).status_code in (400, 403)
-    assert TestClient(app).post(f"/agent/listings/{listing_id}/video", data={},
-                                follow_redirects=False).status_code in (303, 401, 403)
+    assert TestClient(app).post(f"/agent/listings/{listing_id}/video", data={}, follow_redirects=False).status_code in (
+        303,
+        401,
+        403,
+    )
     assert toggle(*signed_in(agent), listing_id).status_code == 303  # still off before this, now on
     with psycopg.connect(config.DATABASE_URL) as conn:
         assert conn.execute("SELECT video_enabled FROM listings WHERE listing_id = %s", [listing_id]).fetchone()[0]
@@ -333,4 +379,3 @@ def test_turning_on_again_retries_a_failed_video(agent, monkeypatch):
     toggle(client, token, listing_id)
     drain()
     assert video_row(listing_id)["status"] == "ready"
-

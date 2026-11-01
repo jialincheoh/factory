@@ -1,5 +1,5 @@
-# Render Blueprint: free web service + free Postgres, for a temporary public URL.
-# Photos are stored on the container's disk and are lost on each restart (free tier has no persistent disk).
+# Render Blueprint: free web service + free Postgres.
+# Photos and videos are stored in Postgres; UPLOAD_DIR is only a cache, so losing it on restart is harmless.
 databases:
   - name: factory-db
     plan: free

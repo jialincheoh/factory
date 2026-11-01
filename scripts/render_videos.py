@@ -6,7 +6,8 @@ The web server does the same work slowly in the background (VIDEO_WORKER). Run t
 machine with DATABASE_URL set to clear a backlog, or as a scheduled job on hosts that pause
 background threads between requests, such as Cloud Run (set VIDEO_WORKER=0 there).
 """
-from app import video
+
+from app.services import video
 
 
 def main() -> None:

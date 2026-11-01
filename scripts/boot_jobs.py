@@ -1,12 +1,13 @@
 """Optional one-off jobs started at boot, in the background, chosen by environment variables.
 
-Render's free plan has no shell or cron, so START_PY runs this after migrations:
+Render's free plan has no shell or cron, so the service's start command runs this after migrations:
 
     EVAL_JOB=factory-ads   push new agent decisions to this LangSmith dataset (needs LANGSMITH_API_KEY)
     EVAL_RUN=1             also score the current model and prompt on it (uses model quota)
 
 The web server starts straight away; a job's output goes to the service log.
 """
+
 import os
 import subprocess
 import sys

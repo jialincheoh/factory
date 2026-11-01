@@ -1,6 +1,7 @@
 """App tests run against a throwaway database, listing_ads_test, on the same
 Postgres server (docker compose). The schema is rebuilt from the migrations
 for every test session, and the language model is the offline stand-in."""
+
 import os
 import re
 import tempfile
@@ -12,8 +13,10 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 os.environ.setdefault("POSTGRES_PORT", "5432")
 _base = "postgresql://{u}:{p}@localhost:{port}".format(
-    u=os.environ.get("POSTGRES_USER", "listing"), p=os.environ.get("POSTGRES_PASSWORD", "listing-local-only"),
-    port=os.environ["POSTGRES_PORT"])
+    u=os.environ.get("POSTGRES_USER", "listing"),
+    p=os.environ.get("POSTGRES_PASSWORD", "listing-local-only"),
+    port=os.environ["POSTGRES_PORT"],
+)
 os.environ["DATABASE_URL"] = f"{_base}/listing_ads_test"
 os.environ["LLM_MODEL"] = "offline"
 os.environ["EMBEDDINGS_MODEL"] = "fake"  # deterministic vectors, no API

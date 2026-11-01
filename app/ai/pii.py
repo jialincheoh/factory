@@ -7,6 +7,7 @@ searches need only the requirements. Pattern-based, so it catches the common
 local formats rather than every possible one; the privacy notice still asks
 buyers not to type personal details.
 """
+
 import re
 
 PHONE = "[phone]"

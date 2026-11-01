@@ -1,12 +1,14 @@
 """Postgres access. One short-lived connection per request; every query is
 parameterised (psycopg sends values separately from the SQL text)."""
+
 from contextlib import contextmanager
 
 import psycopg
 from psycopg.rows import dict_row
 
-from . import config, embeddings
+from . import config
 from .ai.schemas import SearchFilters
+from .services import embeddings
 
 
 @contextmanager
@@ -44,8 +46,9 @@ WHERE l.status = 'published' AND l.property_type IN ('factory', 'warehouse', 'la
 
 def featured_listings(conn, limit: int = 4) -> list[dict]:
     """Listings the agent marked as featured, most recently featured first."""
-    return conn.execute(LISTING_CARD_SQL + " AND l.featured_at IS NOT NULL ORDER BY l.featured_at DESC LIMIT %s",
-                        [limit]).fetchall()
+    return conn.execute(
+        LISTING_CARD_SQL + " AND l.featured_at IS NOT NULL ORDER BY l.featured_at DESC LIMIT %s", [limit]
+    ).fetchall()
 
 
 def _escape_like(s: str) -> str:
@@ -56,7 +59,8 @@ def search_listings(conn, f: SearchFilters, limit: int = 60) -> list[dict]:
     where, params = [], []
 
     def add(sql, *values):
-        where.append(sql); params.extend(values)
+        where.append(sql)
+        params.extend(values)
 
     if f.deal_type:
         add("l.deal_type = %s", f.deal_type)

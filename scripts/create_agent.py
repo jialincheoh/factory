@@ -5,6 +5,7 @@
 The password is prompted for, never passed on the command line (it would end
 up in shell history).
 """
+
 import argparse
 import getpass
 import uuid
@@ -27,7 +28,8 @@ def main():
         conn.execute(
             "INSERT INTO real_estate_agents (real_estate_agent_id, display_name, email, password_hash, phone) "
             "VALUES (%s, %s, %s, %s, %s)",
-            [uuid.uuid4(), args.name, args.email.strip().lower(), security.hash_password(password), args.phone])
+            [uuid.uuid4(), args.name, args.email.strip().lower(), security.hash_password(password), args.phone],
+        )
     print(f"Created {args.email}")
 
 

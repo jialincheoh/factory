@@ -4,11 +4,26 @@ Used to drop a first map pin when an agent names a town, and by the offline
 search rules to recognise place names. Agents move the pin to the exact spot
 on the review page. Coordinates are town centres, accurate to a few km.
 """
+
 import re
 
 STATES = [
-    "Johor", "Kedah", "Kelantan", "Kuala Lumpur", "Labuan", "Melaka", "Negeri Sembilan", "Pahang", "Penang",
-    "Perak", "Perlis", "Putrajaya", "Sabah", "Sarawak", "Selangor", "Terengganu",
+    "Johor",
+    "Kedah",
+    "Kelantan",
+    "Kuala Lumpur",
+    "Labuan",
+    "Melaka",
+    "Negeri Sembilan",
+    "Pahang",
+    "Penang",
+    "Perak",
+    "Perlis",
+    "Putrajaya",
+    "Sabah",
+    "Sarawak",
+    "Selangor",
+    "Terengganu",
 ]
 
 # name: (state, latitude, longitude)
@@ -53,11 +68,23 @@ AREAS = {
     "Kota Kinabalu": ("Sabah", 5.9804, 116.0735),
     "Kuching": ("Sarawak", 1.5533, 110.3592),
 }
-ALIASES = {"prai": "Perai", "jb": "Johor Bahru", "pj": "Petaling Jaya", "kl": "Kuala Lumpur", "malacca": "Melaka",
-           "pulau pinang": "Penang", "georgetown": "Penang", "bk5": "Bandar Kinrara",
-           "bandar puteri puchong": "Puchong", "bandar puchong jaya": "Puchong",
-           "hicom glenmarie": "Glenmarie", "temasya glenmarie": "Glenmarie", "temasya industrial park": "Glenmarie",
-           "novus business park": "Glenmarie", "novus industrial park": "Glenmarie"}
+ALIASES = {
+    "prai": "Perai",
+    "jb": "Johor Bahru",
+    "pj": "Petaling Jaya",
+    "kl": "Kuala Lumpur",
+    "malacca": "Melaka",
+    "pulau pinang": "Penang",
+    "georgetown": "Penang",
+    "bk5": "Bandar Kinrara",
+    "bandar puteri puchong": "Puchong",
+    "bandar puchong jaya": "Puchong",
+    "hicom glenmarie": "Glenmarie",
+    "temasya glenmarie": "Glenmarie",
+    "temasya industrial park": "Glenmarie",
+    "novus business park": "Glenmarie",
+    "novus industrial park": "Glenmarie",
+}
 
 COUNTRY_CENTRE = (4.2, 102.0)
 

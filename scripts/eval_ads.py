@@ -22,6 +22,7 @@ privacy notice does not mention yet: update /privacy, or use only consented or
 demo data, before using --push or --langsmith with real agents' listings.
 Photos never leave the server; the target reads them from UPLOAD_DIR when present.
 """
+
 import argparse
 import json
 import re
@@ -31,19 +32,33 @@ import time
 from difflib import SequenceMatcher
 from pathlib import Path
 
-from app import config, db, images
+from app import config, db
 from app.ai import get_assistant, llm, pii
+from app.services import images
 
 CARD_FIELDS = {  # reference column on listings -> field on the model's PropertyCard
-    "property_type": "property_type", "deal_type": "deal_type", "location": "location", "state": "state",
-    "price_listed": "price", "land_area_acres": "land_area_acres", "size_sqft": "size_sqft",
-    "ceiling_height_ft": "ceiling_height_ft", "power_amps": "power_amps", "power_kva": "power_kva",
-    "tenure": "tenure", "zoning": "zoning", "container_access": "container_access", "loading_bays": "loading_bays",
+    "property_type": "property_type",
+    "deal_type": "deal_type",
+    "location": "location",
+    "state": "state",
+    "price_listed": "price",
+    "land_area_acres": "land_area_acres",
+    "size_sqft": "size_sqft",
+    "ceiling_height_ft": "ceiling_height_ft",
+    "power_amps": "power_amps",
+    "power_kva": "power_kva",
+    "tenure": "tenure",
+    "zoning": "zoning",
+    "container_access": "container_access",
+    "loading_bays": "loading_bays",
 }
 
-EXPORT_SQL = """
+EXPORT_SQL = (
+    """
 SELECT g.request_id, g.model_name, g.prompt_version, l.description_original, d.decision_type, d.final_text,
-       l.""" + ", l.".join(CARD_FIELDS) + """,
+       l."""
+    + ", l.".join(CARD_FIELDS)
+    + """,
        coalesce((SELECT array_agg(i.file_name ORDER BY i.position) FROM listing_images i
                  WHERE i.listing_id = l.listing_id), '{}') AS photos
 FROM decisions d
@@ -51,21 +66,34 @@ JOIN generation_requests g USING (request_id)
 JOIN listings l USING (listing_id)
 WHERE d.decision_type IN ('kept', 'wrote_own') AND l.status = 'published'
 ORDER BY d.decided_at"""
+)
 
 
 # ------------------------------------------------------------------ dataset
 
+
 def export_examples(conn) -> list[dict]:
     examples = []
     for r in conn.execute(EXPORT_SQL).fetchall():
-        examples.append({
-            "inputs": {"description": pii.mask(r["description_original"]), "photos": list(r["photos"]),
-                       "n_drafts": config.DRAFTS_PER_REQUEST},
-            "outputs": {"card": {k: _plain(r[k]) for k in CARD_FIELDS if r[k] is not None},
-                        "final_text": pii.mask(r["final_text"] or ""), "decision": r["decision_type"]},
-            "metadata": {"request_id": str(r["request_id"]), "model_name": r["model_name"],
-                         "prompt_version": r["prompt_version"]},
-        })
+        examples.append(
+            {
+                "inputs": {
+                    "description": pii.mask(r["description_original"]),
+                    "photos": list(r["photos"]),
+                    "n_drafts": config.DRAFTS_PER_REQUEST,
+                },
+                "outputs": {
+                    "card": {k: _plain(r[k]) for k in CARD_FIELDS if r[k] is not None},
+                    "final_text": pii.mask(r["final_text"] or ""),
+                    "decision": r["decision_type"],
+                },
+                "metadata": {
+                    "request_id": str(r["request_id"]),
+                    "model_name": r["model_name"],
+                    "prompt_version": r["prompt_version"],
+                },
+            }
+        )
     return examples
 
 
@@ -78,6 +106,7 @@ def _plain(v):
 
 # ------------------------------------------------------------------ target
 
+
 def target(inputs: dict) -> dict:
     """Run the configured ad writer on one example. Photos come from this server's disk cache or database;
     where neither has them (e.g. a laptop without the database), the example runs on the description alone."""
@@ -89,17 +118,26 @@ def target(inputs: dict) -> dict:
                 if data:
                     photos.append((data, "image/jpeg"))
     except Exception:  # no database reachable from here
-        photos = [((config.UPLOAD_DIR / n).read_bytes(), "image/jpeg") for n in inputs.get("photos") or []
-                  if (config.UPLOAD_DIR / n).exists()]
+        photos = [
+            ((config.UPLOAD_DIR / n).read_bytes(), "image/jpeg")
+            for n in inputs.get("photos") or []
+            if (config.UPLOAD_DIR / n).exists()
+        ]
     started = time.monotonic()
     result = get_assistant().write_ads(inputs["description"], photos, inputs.get("n_drafts", 3))
-    return {"card": result.analysis.card.model_dump(), "drafts": [d.model_dump() for d in result.analysis.drafts],
-            "checks": result.checks, "model": result.model_name, "photos_used": len(photos),
-            "seconds": round(time.monotonic() - started, 2)}
+    return {
+        "card": result.analysis.card.model_dump(),
+        "drafts": [d.model_dump() for d in result.analysis.drafts],
+        "checks": result.checks,
+        "model": result.model_name,
+        "photos_used": len(photos),
+        "seconds": round(time.monotonic() - started, 2),
+    }
 
 
 # ------------------------------------------------------------------ evaluators
 # LangSmith calls these with keyword arguments; the local runner does the same.
+
 
 def card_accuracy(outputs: dict, reference_outputs: dict, **_) -> dict:
     """Share of the agent's published card fields the model got right (numbers within 2%)."""
@@ -136,8 +174,10 @@ def closeness_to_kept(outputs: dict, reference_outputs: dict, **_) -> dict:
     drafts = outputs.get("drafts") or []
     if not final or not drafts:
         return {"key": "closeness_to_kept", "score": None}
-    return {"key": "closeness_to_kept",
-            "score": max(SequenceMatcher(None, f"{d['headline']}\n\n{d['body']}", final).ratio() for d in drafts)}
+    return {
+        "key": "closeness_to_kept",
+        "score": max(SequenceMatcher(None, f"{d['headline']}\n\n{d['body']}", final).ratio() for d in drafts),
+    }
 
 
 def no_contact_details(outputs: dict, **_) -> dict:
@@ -151,6 +191,7 @@ EVALUATORS = [card_accuracy, drafts_supported, format_ok, closeness_to_kept, no_
 
 
 # ------------------------------------------------------------------ runners
+
 
 def run_local(examples: list[dict]) -> dict[str, float | None]:
     scores: dict[str, list[float]] = {e.__name__: [] for e in EVALUATORS}
@@ -178,6 +219,7 @@ def run_local(examples: list[dict]) -> dict[str, float | None]:
 def push_new(examples: list[dict], dataset_name: str) -> None:
     """Add the examples a LangSmith dataset does not have yet (matched on request_id), so reruns don't duplicate."""
     from langsmith import Client
+
     client = Client()
     if client.has_dataset(dataset_name=dataset_name):
         dataset = client.read_dataset(dataset_name=dataset_name)
@@ -197,8 +239,11 @@ def main() -> None:
     e = sub.add_parser("export", help="build the dataset from the database")
     e.add_argument("--out", type=Path, help="write JSON lines here")
     e.add_argument("--push", metavar="DATASET", help="also create or extend this LangSmith dataset")
-    e.add_argument("--confirm-privacy", action="store_true",
-                   help="confirm the data may go to LangSmith (see the note at the top of this file)")
+    e.add_argument(
+        "--confirm-privacy",
+        action="store_true",
+        help="confirm the data may go to LangSmith (see the note at the top of this file)",
+    )
     r = sub.add_parser("run", help="score the configured model and prompt")
     src = r.add_mutually_exclusive_group(required=True)
     src.add_argument("--data", type=Path, help="local JSON lines from export")
@@ -218,9 +263,15 @@ def main() -> None:
         push_new(examples, args.dataset)
         if args.run:
             from langsmith import evaluate
-            results = evaluate(target, data=args.dataset, evaluators=EVALUATORS,
-                               experiment_prefix=f"{config.LLM_MODEL}-{llm.PROMPT_VERSION}".replace(":", "-"),
-                               max_concurrency=1, metadata={"model": config.LLM_MODEL, "prompt": llm.PROMPT_VERSION})
+
+            results = evaluate(
+                target,
+                data=args.dataset,
+                evaluators=EVALUATORS,
+                experiment_prefix=f"{config.LLM_MODEL}-{llm.PROMPT_VERSION}".replace(":", "-"),
+                max_concurrency=1,
+                metadata={"model": config.LLM_MODEL, "prompt": llm.PROMPT_VERSION},
+            )
             print(f"LangSmith experiment: {results.experiment_name}", file=sys.stderr)
         return
 
@@ -240,11 +291,18 @@ def main() -> None:
     experiment = f"{config.LLM_MODEL}-{llm.PROMPT_VERSION}".replace(":", "-")
     if args.langsmith:
         from langsmith import evaluate
-        results = evaluate(target, data=args.langsmith, evaluators=EVALUATORS, experiment_prefix=experiment,
-                           max_concurrency=2, metadata={"model": config.LLM_MODEL, "prompt": llm.PROMPT_VERSION})
+
+        results = evaluate(
+            target,
+            data=args.langsmith,
+            evaluators=EVALUATORS,
+            experiment_prefix=experiment,
+            max_concurrency=2,
+            metadata={"model": config.LLM_MODEL, "prompt": llm.PROMPT_VERSION},
+        )
         print(f"LangSmith experiment: {results.experiment_name}")
         return
-    examples = [json.loads(line) for line in args.data.read_text().splitlines() if line.strip()][:args.limit]
+    examples = [json.loads(line) for line in args.data.read_text().splitlines() if line.strip()][: args.limit]
     summary = run_local(examples)
     print(json.dumps({"experiment": experiment, "examples": len(examples), **summary}, indent=2))
 

@@ -17,10 +17,11 @@ Terminology: the model is called by this code; it is not an "agent". In this
 project "agent" always means a human real estate agent. LangChain's
 create_agent is only the name of the library function that runs the tool loop.
 """
+
 import base64
 import hashlib
 import json
-from typing import Callable
+from collections.abc import Callable
 
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelCallLimitMiddleware, ModelFallbackMiddleware
@@ -29,12 +30,21 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import StructuredTool
 
 from . import calllog, draft_graph, pii
-from .schemas import (AdDraft, AdResult, ChatResult, DraftVerdict, FixedDraft, ListingAnalysis, OutOfScope,
-                      SearchFilters, Transcript)
+from .schemas import (
+    AdDraft,
+    AdResult,
+    ChatResult,
+    DraftVerdict,
+    FixedDraft,
+    ListingAnalysis,
+    OutOfScope,
+    SearchFilters,
+    Transcript,
+)
 
 # Bump when a prompt below changes; tests/test_ai.py pins each version to its prompt fingerprint.
-PROMPT_VERSION = "ads-v8-buildings"  # whole commercial (office) buildings listed too
-SEARCH_PROMPT_VERSION = "search-v6-buildings"  # whole office buildings in scope; office units declined
+PROMPT_VERSION = "ads-v9-no-country"  # prompts no longer name the country
+SEARCH_PROMPT_VERSION = "search-v7-no-country"  # prompts and replies no longer name the country
 MODEL_TIMEOUT_S = 60  # per model call; reading several photos can take a while
 
 WRITE_ADS_SYSTEM = """You help a human real estate agent turn photos and a short note into a property ad. The site lists factories, warehouses, and industrial or commercial land, sold or rented to business owners and investors. Use property_type 'land' for industrial or commercial land without a usable building, and 'commercial_building' for a whole office building or office tower. If the description is for something else (a shop or shop office, a single office unit, a house, farmland), set property_type to 'other' and add a 'warning' mismatch saying so.
@@ -84,9 +94,10 @@ DECLINE_REPLIES = {
     "residential": "This site lists factories, warehouses and industrial land, so there are no homes here.",
     "shop_or_office": "This site lists factories, warehouses, industrial land and whole office buildings. Shop lots and office units are on kedai.my.",
     "land_only": "This site lists factories, warehouses and industrial or commercial land, not farmland or "
-                 "residential land. Tell me what you need the land for and I can look.",
+    "residential land. Tell me what you need the land for and I can look.",
     "unrelated": "I can help you find factories, warehouses and industrial land for sale or rent. What are you looking for?",
 }
+
 
 def prompt_fingerprint(*prompts: str) -> str:
     """Short hash of prompt templates, stored with each call so an unrecorded prompt edit shows up."""
@@ -107,9 +118,11 @@ TRANSCRIBE_SYSTEM = """Transcribe the buyer's voice message for a factory and wa
 def _facts(analysis: ListingAnalysis) -> str:
     card = analysis.card.model_dump(exclude_none=True, exclude={"title"})
     warnings = [f"{m.claim}: {m.finding}" for m in analysis.mismatches if m.severity == "warning"]
-    return (f"Property card:\n{json.dumps(card, ensure_ascii=False)}\n\n"
-            f"Agent's description (English):\n<description>\n{analysis.english_description}\n</description>\n\n"
-            f"Photo findings flagged as warnings:\n" + ("\n".join(f"- {w}" for w in warnings) or "none"))
+    return (
+        f"Property card:\n{json.dumps(card, ensure_ascii=False)}\n\n"
+        f"Agent's description (English):\n<description>\n{analysis.english_description}\n</description>\n\n"
+        f"Photo findings flagged as warnings:\n" + ("\n".join(f"- {w}" for w in warnings) or "none")
+    )
 
 
 def _drafts_text(drafts: dict[int, AdDraft], claims: dict[int, list[str]] | None = None) -> str:
@@ -152,8 +165,7 @@ class LLMAssistant:
         """The configured "provider:model" that produced this message."""
         reported = (getattr(message, "response_metadata", None) or {}).get("model_name") or ""
         if self._fallback and reported:
-            matches = [spec for spec in (self.model_name, self.fallback_name)
-                       if spec.split(":", 1)[-1] in reported]
+            matches = [spec for spec in (self.model_name, self.fallback_name) if spec.split(":", 1)[-1] in reported]
             if matches:
                 return max(matches, key=lambda spec: len(spec.split(":", 1)[-1]))
         return self.model_name
@@ -161,8 +173,11 @@ class LLMAssistant:
     def _structured(self, schema, messages, name: str):
         """One structured call, on the fallback model if the main one fails. Returns (parsed, model name)."""
         # Native JSON-schema output; forced tool calling is unsupported on some models.
-        runs = [m.with_structured_output(schema, method="json_schema", include_raw=True)
-                for m in (self._model, self._fallback) if m is not None]
+        runs = [
+            m.with_structured_output(schema, method="json_schema", include_raw=True)
+            for m in (self._model, self._fallback)
+            if m is not None
+        ]
         runnable = runs[0].with_fallbacks(runs[1:]) if len(runs) > 1 else runs[0]
         out = runnable.invoke(messages, config=self._run_config(name))
         if out.get("parsing_error") or out.get("parsed") is None:
@@ -185,9 +200,13 @@ class LLMAssistant:
         """Check one draft (the graph runs one of these per draft, in parallel)."""
         try:
             result, model = self._structured(
-                DraftVerdict, [SystemMessage(CHECK_SYSTEM),
-                               HumanMessage(f"{_facts(analysis)}\n\n{_drafts_text({i: analysis.drafts[i]})}")],
-                "check_draft")
+                DraftVerdict,
+                [
+                    SystemMessage(CHECK_SYSTEM),
+                    HumanMessage(f"{_facts(analysis)}\n\n{_drafts_text({i: analysis.drafts[i]})}"),
+                ],
+                "check_draft",
+            )
         except Exception as exc:  # the check is a safeguard; without it the agent still reviews every draft
             return None, f"check failed: {type(exc).__name__}"
         return [c for c in result.unsupported_claims if c.strip()], model
@@ -196,9 +215,13 @@ class LLMAssistant:
         """Fix one draft's unsupported claims."""
         try:
             result, model = self._structured(
-                FixedDraft, [SystemMessage(REWRITE_SYSTEM),
-                             HumanMessage(f"{_facts(analysis)}\n\n{_drafts_text({i: analysis.drafts[i]}, {i: claims})}")],
-                "rewrite_draft")
+                FixedDraft,
+                [
+                    SystemMessage(REWRITE_SYSTEM),
+                    HumanMessage(f"{_facts(analysis)}\n\n{_drafts_text({i: analysis.drafts[i]}, {i: claims})}"),
+                ],
+                "rewrite_draft",
+            )
         except Exception as exc:  # keep the draft as written; the agent sees what was flagged
             return None, f"rewrite failed: {type(exc).__name__}"
         return AdDraft(headline=result.headline, body=result.body), model
@@ -207,10 +230,16 @@ class LLMAssistant:
         """Revise one draft following the agent's feedback (human-in-the-loop step)."""
         try:
             result, model = self._structured(
-                FixedDraft, [SystemMessage(REVISE_SYSTEM),
-                             HumanMessage(f"{_facts(analysis)}\n\n{_drafts_text({i: analysis.drafts[i]})}\n\n"
-                                          f"Agent's feedback on draft {i + 1}:\n<feedback>\n{pii.mask(feedback)}\n</feedback>")],
-                "revise_draft")
+                FixedDraft,
+                [
+                    SystemMessage(REVISE_SYSTEM),
+                    HumanMessage(
+                        f"{_facts(analysis)}\n\n{_drafts_text({i: analysis.drafts[i]})}\n\n"
+                        f"Agent's feedback on draft {i + 1}:\n<feedback>\n{pii.mask(feedback)}\n</feedback>"
+                    ),
+                ],
+                "revise_draft",
+            )
         except Exception as exc:
             return None, f"revise failed: {type(exc).__name__}"
         return AdDraft(headline=pii.mask(result.headline), body=pii.mask(result.body)), model
@@ -222,24 +251,39 @@ class LLMAssistant:
 
     def settings(self) -> dict:
         """Sampling and call settings, stored with each model call."""
-        return {"temperature": "provider default", "max_retries": 1, "timeout_s": MODEL_TIMEOUT_S,
-                "fallback": self.fallback_name or None}
+        return {
+            "temperature": "provider default",
+            "max_retries": 1,
+            "timeout_s": MODEL_TIMEOUT_S,
+            "fallback": self.fallback_name or None,
+        }
 
-    def write_ads(self, description: str, images: list[tuple[bytes, str]], n_drafts: int,
-                  recorder: calllog.CallRecorder | None = None) -> AdResult:
+    def write_ads(
+        self,
+        description: str,
+        images: list[tuple[bytes, str]],
+        n_drafts: int,
+        recorder: calllog.CallRecorder | None = None,
+    ) -> AdResult:
         description = pii.mask(description)
         recorder = recorder or calllog.CallRecorder()
         token = calllog.current.set(recorder)
         try:
             state = self._draft_graph.invoke(
                 {"description": description, "images": images, "n_drafts": n_drafts},
-                config=self._run_config("write_ads", recorder, n_drafts=n_drafts, photos=len(images)))
+                config=self._run_config("write_ads", recorder, n_drafts=n_drafts, photos=len(images)),
+            )
         finally:
             calllog.current.reset(token)
         return self._finish(state, description, images, n_drafts)
 
-    async def astream_ads(self, description: str, images: list[tuple[bytes, str]], n_drafts: int,
-                          recorder: calllog.CallRecorder | None = None):
+    async def astream_ads(
+        self,
+        description: str,
+        images: list[tuple[bytes, str]],
+        n_drafts: int,
+        recorder: calllog.CallRecorder | None = None,
+    ):
         """Async version of write_ads that reports progress while the graph runs.
         Yields ("step", message) for each finished step, then ("result", AdResult)."""
         description = pii.mask(description)
@@ -248,9 +292,10 @@ class LLMAssistant:
         state, checks_so_far = None, {}
         try:
             async for mode, chunk in self._draft_graph.astream(
-                    {"description": description, "images": images, "n_drafts": n_drafts},
-                    config=self._run_config("write_ads", recorder, n_drafts=n_drafts, photos=len(images)),
-                    stream_mode=["updates", "values"]):
+                {"description": description, "images": images, "n_drafts": n_drafts},
+                config=self._run_config("write_ads", recorder, n_drafts=n_drafts, photos=len(images)),
+                stream_mode=["updates", "values"],
+            ):
                 if mode == "values":
                     state = chunk
                     continue
@@ -271,9 +316,11 @@ class LLMAssistant:
                 d.cover_photo = None  # a photo number that does not exist
         analysis.photo_captions = [c for c in analysis.photo_captions if 1 <= c.photo <= len(images)]
         # Stored in generation_requests.prompt_text; photos are referenced, not inlined.
-        prompt_text = (f"[system]\n{WRITE_ADS_SYSTEM.format(n=n_drafts)}\n\n[user]\n{_user_text(description, images)}\n"
-                       + "".join(f"[photo {i}: {mime}, {len(data)} bytes]\n" for i, (data, mime) in enumerate(images, 1))
-                       + f"\n[check, per draft]\n{CHECK_SYSTEM}\n\n[rewrite, per draft, up to {draft_graph.MAX_REWRITES} round(s)]\n{REWRITE_SYSTEM}\n")
+        prompt_text = (
+            f"[system]\n{WRITE_ADS_SYSTEM.format(n=n_drafts)}\n\n[user]\n{_user_text(description, images)}\n"
+            + "".join(f"[photo {i}: {mime}, {len(data)} bytes]\n" for i, (data, mime) in enumerate(images, 1))
+            + f"\n[check, per draft]\n{CHECK_SYSTEM}\n\n[rewrite, per draft, up to {draft_graph.MAX_REWRITES} round(s)]\n{REWRITE_SYSTEM}\n"
+        )
         models = [m for m in dict.fromkeys(state["models"]) if " failed: " not in m]
         checks = draft_graph.draft_checks(state)
         for c in checks:  # why a step failed, for the research record
@@ -285,17 +332,25 @@ class LLMAssistant:
         token = calllog.current.set(recorder or calllog.CallRecorder())
         try:
             result, _ = self._structured(
-                Transcript, [SystemMessage(TRANSCRIBE_SYSTEM),
-                             HumanMessage(content=[{"type": "text", "text": "Voice message:"},
-                                                   _audio_block(audio, mime_type)])], "transcribe")
+                Transcript,
+                [
+                    SystemMessage(TRANSCRIBE_SYSTEM),
+                    HumanMessage(content=[{"type": "text", "text": "Voice message:"}, _audio_block(audio, mime_type)]),
+                ],
+                "transcribe",
+            )
         finally:
             calllog.current.reset(token)
         return result.transcript.strip()
 
-    def search_chat(self, history: list[dict], run_search: Callable[[SearchFilters], list[dict]],
-                    current: SearchFilters | None = None,
-                    recorder: calllog.CallRecorder | None = None,
-                    image: tuple[bytes, str] | None = None) -> ChatResult:
+    def search_chat(
+        self,
+        history: list[dict],
+        run_search: Callable[[SearchFilters], list[dict]],
+        current: SearchFilters | None = None,
+        recorder: calllog.CallRecorder | None = None,
+        image: tuple[bytes, str] | None = None,
+    ) -> ChatResult:
         """history: [{'role': 'user'|'assistant', 'content': str}, ...], newest last.
         image: (bytes, mime type) attached to the newest buyer message, if they sent a photo."""
         last: dict = {}
@@ -308,9 +363,24 @@ class LLMAssistant:
             filters = SearchFilters(**kwargs)
             results = run_search(filters)
             last["filters"], last["results"] = filters, results
-            brief = [{k: r.get(k) for k in ("title", "deal_type", "location", "price", "land_area_acres", "size_sqft",
-                                         "power_amps_equiv", "ceiling_height_ft", "tenure", "container_access")}
-                     for r in results[:10]]
+            brief = [
+                {
+                    k: r.get(k)
+                    for k in (
+                        "title",
+                        "deal_type",
+                        "location",
+                        "price",
+                        "land_area_acres",
+                        "size_sqft",
+                        "power_amps_equiv",
+                        "ceiling_height_ft",
+                        "tenure",
+                        "container_access",
+                    )
+                }
+                for r in results[:10]
+            ]
             return json.dumps({"match_count": len(results), "top_matches": brief}, default=str)
 
         tool = StructuredTool.from_function(
@@ -333,22 +403,28 @@ class LLMAssistant:
             middleware.append(ModelFallbackMiddleware(self._fallback))
         settings = current.model_dump_json(exclude_none=True, exclude_defaults=True) if current else "{}"
         search_loop = create_agent(
-            self._model, [tool, decline], middleware=middleware,
-            system_prompt=SEARCH_SYSTEM.format(currency=self.currency, current_filters=settings))
+            self._model,
+            [tool, decline],
+            middleware=middleware,
+            system_prompt=SEARCH_SYSTEM.format(currency=self.currency, current_filters=settings),
+        )
 
         messages = [(HumanMessage if t["role"] == "user" else AIMessage)(pii.mask(t["content"])) for t in history]
         if image is not None and messages and isinstance(messages[-1], HumanMessage):
-            messages[-1] = HumanMessage(content=[{"type": "text", "text": messages[-1].text or "Buyer's photo:"},
-                                                 _image_block(*image)])
-        state = search_loop.invoke({"messages": messages},
-                                   config=self._run_config("search_chat", recorder or calllog.CallRecorder(),
-                                                           tag=SEARCH_PROMPT_VERSION))
-        replies = [m for m in state["messages"][len(messages):] if isinstance(m, AIMessage)]
+            messages[-1] = HumanMessage(
+                content=[{"type": "text", "text": messages[-1].text or "Buyer's photo:"}, _image_block(*image)]
+            )
+        state = search_loop.invoke(
+            {"messages": messages},
+            config=self._run_config("search_chat", recorder or calllog.CallRecorder(), tag=SEARCH_PROMPT_VERSION),
+        )
+        replies = [m for m in state["messages"][len(messages) :] if isinstance(m, AIMessage)]
         reply = replies[-1] if replies else None
 
         if last.get("declined"):
-            return ChatResult(DECLINE_REPLIES[last["declined"]], None, None, self._which_model(reply),
-                              declined=last["declined"])
+            return ChatResult(
+                DECLINE_REPLIES[last["declined"]], None, None, self._which_model(reply), declined=last["declined"]
+            )
         text = reply.text if reply is not None else ""
         if not text.strip():
             text = "Here is what I found." if last else "Tell me what kind of property you are looking for."
@@ -360,5 +436,7 @@ SEARCH_PROMPT_FINGERPRINT = prompt_fingerprint(SEARCH_SYSTEM, TRANSCRIBE_SYSTEM,
 
 
 def _user_text(description: str, images: list) -> str:
-    return (f"Agent's description:\n<description>\n{description}\n</description>\n\n"
-            f"{len(images)} photo(s) follow, numbered in order.")
+    return (
+        f"Agent's description:\n<description>\n{description}\n</description>\n\n"
+        f"{len(images)} photo(s) follow, numbered in order."
+    )

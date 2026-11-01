@@ -13,8 +13,10 @@ branches run at the same time and each check sees only one draft. The model
 calls are passed in as plain functions, so the graph can be tested without a
 model and the same graph serves every provider.
 """
+
 import operator
-from typing import Annotated, Callable, TypedDict
+from collections.abc import Callable
+from typing import Annotated, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
@@ -41,14 +43,15 @@ class DraftState(TypedDict, total=False):
     n_drafts: int
     analysis: ListingAnalysis
     verdicts: Annotated[dict[int, list[str] | None], _merge]  # latest check per draft; None if it failed
-    fixes: Annotated[dict[int, AdDraft | None], _merge]       # this round's rewrites, keyed by draft
-    history: list[list[dict]]              # per draft: earlier versions and what was wrong with them
+    fixes: Annotated[dict[int, AdDraft | None], _merge]  # this round's rewrites, keyed by draft
+    history: list[list[dict]]  # per draft: earlier versions and what was wrong with them
     rewrites: int
     models: Annotated[list[str], operator.add]
 
 
 class DraftTask(TypedDict, total=False):
     """What one parallel branch receives."""
+
     i: int
     analysis: ListingAnalysis
     claims: list[str]
@@ -58,8 +61,13 @@ def build(analyse: Analyse, check: Check, rewrite: Rewrite, max_rewrites: int = 
     def analyse_node(state: DraftState) -> dict:
         analysis, model = analyse(state["description"], state["images"], state["n_drafts"])
         # Photos are only needed here; dropping them keeps later state (and any checkpoint) small.
-        return {"analysis": analysis, "images": [], "history": [[] for _ in analysis.drafts], "rewrites": 0,
-                "models": [model]}
+        return {
+            "analysis": analysis,
+            "images": [],
+            "history": [[] for _ in analysis.drafts],
+            "rewrites": 0,
+            "models": [model],
+        }
 
     def check_one(task: DraftTask) -> dict:
         claims, model = check(task["analysis"], task["i"])
@@ -79,18 +87,21 @@ def build(analyse: Analyse, check: Check, rewrite: Rewrite, max_rewrites: int = 
             if draft is None:
                 continue  # the rewrite failed: keep the draft and its verdict
             old = analysis.drafts[i]
-            history[i].append({"headline": old.headline, "body": old.body,
-                               "unsupported_claims": state["verdicts"][i]})
+            history[i].append({"headline": old.headline, "body": old.body, "unsupported_claims": state["verdicts"][i]})
             analysis.drafts[i] = AdDraft(headline=draft.headline, body=draft.body, cover_photo=old.cover_photo)
         return {"analysis": analysis, "history": history, "rewrites": state["rewrites"] + 1}
 
     def check_all(state: DraftState):
-        return [Send("check_one", {"i": i, "analysis": state["analysis"]}) for i in range(len(state["analysis"].drafts))]
+        return [
+            Send("check_one", {"i": i, "analysis": state["analysis"]}) for i in range(len(state["analysis"].drafts))
+        ]
 
     def after_review(state: DraftState):
         failing = {i: c for i, c in state["verdicts"].items() if c}
         if failing and state["rewrites"] < max_rewrites:
-            return [Send("rewrite_one", {"i": i, "analysis": state["analysis"], "claims": c}) for i, c in failing.items()]
+            return [
+                Send("rewrite_one", {"i": i, "analysis": state["analysis"], "claims": c}) for i, c in failing.items()
+            ]
         return END
 
     def after_apply(state: DraftState):
@@ -116,14 +127,19 @@ def build(analyse: Analyse, check: Check, rewrite: Rewrite, max_rewrites: int = 
 def draft_checks(state: DraftState) -> list[dict]:
     """Per draft: whether it was checked, claims still unsupported, and earlier versions."""
     verdicts = state.get("verdicts") or {}
-    return [{"checked": verdicts.get(i) is not None,
-             "unsupported_claims": verdicts.get(i) or [],
-             "earlier_versions": state["history"][i]}
-            for i in range(len(state["analysis"].drafts))]
+    return [
+        {
+            "checked": verdicts.get(i) is not None,
+            "unsupported_claims": verdicts.get(i) or [],
+            "earlier_versions": state["history"][i],
+        }
+        for i in range(len(state["analysis"].drafts))
+    ]
 
 
-def describe_step(node: str, update: dict, checks_so_far: dict[int, int] | None = None,
-                  max_rewrites: int = MAX_REWRITES) -> str | None:
+def describe_step(
+    node: str, update: dict, checks_so_far: dict[int, int] | None = None, max_rewrites: int = MAX_REWRITES
+) -> str | None:
     """One line for the agent's progress view, from a graph update (used when streaming).
     checks_so_far counts earlier checks per draft, so a draft that still fails after the last
     allowed rewrite is reported as flagged, not as going back to the editor."""
@@ -131,7 +147,7 @@ def describe_step(node: str, update: dict, checks_so_far: dict[int, int] | None 
         a = update["analysis"]
         return f"Read the description and photos, filled the property card and wrote {len(a.drafts)} drafts."
     if node == "check_one":
-        (i, claims), = update["verdicts"].items()
+        ((i, claims),) = update["verdicts"].items()
         seen = checks_so_far if checks_so_far is not None else {}
         final_round = seen.get(i, 0) >= max_rewrites
         seen[i] = seen.get(i, 0) + 1
@@ -139,9 +155,12 @@ def describe_step(node: str, update: dict, checks_so_far: dict[int, int] | None 
             return f"Draft {i + 1}: {len(claims)} claim(s) still not supported; it will be shown to you with a warning."
         if claims is None:
             return f"Draft {i + 1}: the fact check could not run; please review it closely."
-        return (f"Draft {i + 1}: every claim is supported." if not claims
-                else f"Draft {i + 1}: {len(claims)} claim(s) not supported by the facts, sending it to the editor.")
+        return (
+            f"Draft {i + 1}: every claim is supported."
+            if not claims
+            else f"Draft {i + 1}: {len(claims)} claim(s) not supported by the facts, sending it to the editor."
+        )
     if node == "rewrite_one":
-        (i, draft), = update["fixes"].items()
+        ((i, draft),) = update["fixes"].items()
         return f"Draft {i + 1}: edited." if draft is not None else f"Draft {i + 1}: the editor could not fix it."
     return None

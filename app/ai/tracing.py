@@ -3,6 +3,7 @@
 Traces contain real estate agents' descriptions and buyers' chat messages.
 Photos are replaced with a placeholder before anything leaves this machine.
 """
+
 from typing import Any
 
 PHOTO = "[photo removed before tracing]"

@@ -1,4 +1,5 @@
 """Settings, read once from the environment (and .env, if present)."""
+
 import os
 from pathlib import Path
 
@@ -54,17 +55,19 @@ SESSION_SECRET = os.environ.get("SESSION_SECRET", "")
 SECURE_COOKIES = os.environ.get("SECURE_COOKIES", "1") != "0"
 
 if TRACE_TO_LANGSMITH and SECURE_COOKIES:
-    raise RuntimeError("TRACE_TO_LANGSMITH is for local development only (SECURE_COOKIES=0): "
-                       "the privacy notice does not cover sending data to LangSmith.")
+    raise RuntimeError(
+        "TRACE_TO_LANGSMITH is for local development only (SECURE_COOKIES=0): "
+        "the privacy notice does not cover sending data to LangSmith."
+    )
 if os.environ.get("LANGSMITH_TRACING", "").lower() == "true":
     raise RuntimeError("Use TRACE_TO_LANGSMITH=1 instead of LANGSMITH_TRACING, so photos are removed from traces.")
 
 UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", ROOT / "uploads"))
 MAX_IMAGES = 8
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
-# Render listing video tours in a background thread of the web server. See app/video.py.
+# Render listing video tours in a background thread of the web server. See app/services/video.py.
 VIDEO_WORKER = os.environ.get("VIDEO_WORKER", "1") != "0"
-# Compare listings with similar ones online, in a background thread. Uses quota, so off unless set. See app/market.py.
+# Compare listings with similar ones online, in a background thread. Uses quota, so off unless set. See app/services/market.py.
 MARKET_CHECK_WORKER = os.environ.get("MARKET_CHECK_WORKER", "0") == "1"
 MARKET_MODEL = os.environ.get("MARKET_MODEL", os.environ.get("LLM_MODEL", "google_genai:gemini-3.5-flash"))
 MARKET_SEARCH_MODEL = os.environ.get("MARKET_SEARCH_MODEL", MARKET_MODEL.split(":", 1)[-1])

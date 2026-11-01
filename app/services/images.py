@@ -1,14 +1,15 @@
 """Photo uploads. Every file is decoded and re-encoded as JPEG, which
-  * rejects anything that is not really an image, whatever its name says,
-  * strips EXIF metadata, including the GPS position of the phone that took it,
-  * caps the size sent to the language model.
+* rejects anything that is not really an image, whatever its name says,
+* strips EXIF metadata, including the GPS position of the phone that took it,
+* caps the size sent to the language model.
 """
+
 import io
 import uuid
 
 from PIL import Image, ImageOps
 
-from . import config
+from .. import config
 
 Image.MAX_IMAGE_PIXELS = 40_000_000  # refuse decompression bombs
 MAX_SIDE = 1600
