@@ -1,210 +1,140 @@
-# Listing Ad Pipeline
+# Factory
 
-An AI system that writes several ad versions for each property listing, records which version the human real estate agent keeps, and tracks how the published ad performs.
+[![CI](https://github.com/jialincheoh/factory/actions/workflows/ci.yml/badge.svg)](https://github.com/jialincheoh/factory/actions/workflows/ci.yml)
+![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
+![Postgres 16 + pgvector](https://img.shields.io/badge/postgres-16%20%2B%20pgvector-blue)
 
-The goal is to learn from two signals at once: what real estate agents actually keep, and what actually brings in inquiries and sales. Prior research suggests people do not always choose the option they rate as best, so the system logs every draft, including the rejected ones.
+A listings portal for factories, warehouses, land and commercial buildings, in production at
+**[corpbiz.my](https://corpbiz.my)**.
 
-**Status:** working MVP website (agent-side ad creation and buyer-side chat search) on top of the schema. The job queue, reranker and training loop in the design below are not built yet.
+Real estate agents upload photos and a short note, in English, Malay or Chinese. A language model fills in a
+structured property card and writes ad drafts, a second pass checks every claim against the facts, and the agent
+decides what gets published. Buyers search with filters or by chatting, speaking or sending a photo.
 
-**Terminology:** in this project, *agent* always means a **human real estate agent**. The AI side is a language model called by a generation worker; nothing in this system is an autonomous AI agent.
+The engineering problem is **putting an unreliable model inside a product where a wrong claim about a property is
+expensive**. The model proposes and ordinary code decides: it validates the output, builds the SQL, does the
+arithmetic, and records what happened. A person approves every ad.
 
-## Design
-
-![Overview: the AI writes 5 ad drafts, the human real estate agent keeps one, the ad goes live, results come back, and the system learns which drafts work](docs/overview.svg)
-
-The detailed diagram below shows the running website: the agent's side writes, checks and publishes ads, the buyer's side searches, and both share one Postgres database.
-
-![System design: contact details are masked, a writer, checker and editor draft the ad, the real estate agent reviews and publishes it, buyers search through a search loop, and everything is recorded in Postgres for a monitor that reports to the site owner](docs/architecture.png)
-
-The notes below describe the research design the system is working towards, on two clocks. It includes a job queue, reranker and training loop that the website does not have yet.
-
-- **Online path (seconds).** Real estate agent's app → API service → job queue → generation worker → language model, with an optional reranker. The worker stores every AI draft with its display position and shuffle seed. The real estate agent keeps one draft, edits it, writes their own, or rejects all of them.
-- **Feedback path (days to weeks).** Ads are published on our own property portal, which logs views, clicks, inquiries and phone-number reveals first-hand. A nightly export trains the reranker, which is then redeployed.
-
-The reranker starts as random order on purpose, so the first months of data show position effects before any model shapes what real estate agents see.
-
-## How it works, in plain language
-
-The system is two loops that share one filing cabinet.
-
-### The fast loop: seconds, while the real estate agent waits
-
-1. **Real estate agent:** a person opens the app and asks for ad ideas for a listing.
-2. **API service, the front desk:** receives the request. It also quietly decides which version of the system this person gets, the way a shop tests two window displays, and how the drafts will be shuffled.
-3. **Job queue, the waiting line:** writing ads takes a few seconds, so requests wait in line instead of freezing the app. If something fails, the job is retried.
-4. **Generation worker, the writer's assistant:** takes the next job and prepares the instructions for the AI.
-5. **LLM serving, the AI itself:** writes five different ad drafts.
-6. **Reranker, a judge (switched off at first):** later, it will score the drafts to predict which one the real estate agent will like. For now, drafts are shown in random order on purpose, to see whether real estate agents simply pick whatever appears first.
-7. **The real estate agent** sees the five drafts, then keeps one, edits it, writes their own, or rejects them all.
-8. **Publish:** the kept ad goes live on our own property portal.
-
-### The filing cabinet (middle): Postgres
-
-Everything is written down here: every draft, including the rejected ones, what the real estate agent chose, and how ads perform later. It is the single source of truth both loops share. Buyers' names and contact details are never stored here.
-
-### The slow loop: days and weeks, learning from results
-
-1. **Our property portal:** records every buyer action on each ad as it happens: views, clicks, inquiries, and clicks to reveal the real estate agent's phone number. The number stays hidden until a buyer clicks, so phone interest is linked to the exact ad too.
-2. **Event logger, the record keeper:** files each action once. If the same action is reported twice, it is only counted once.
-3. **Analytics export:** every night, a copy of the data goes somewhere it can be studied without slowing down the app.
-4. **Train reranker, the learning step:** looks at which drafts real estate agents kept and which ads brought in inquiries and sales, and learns what a good draft looks like.
-5. **Deploy new version:** the improved judge is switched on in the fast loop, so future drafts get better.
-
-## The website (MVP)
-
-A FastAPI app with server-rendered pages, the Postgres schema above, and LangChain for the language-model calls (so the provider is one setting).
-
-**Real estate agent side (`/agent`)**
-
-1. The agent signs in, uploads 1 to 8 photos and writes two or three sentences in any language.
-2. One multimodal model call (`app/ai/llm.py`, `write_ads`) returns a structured result:
-   - the description's language and a faithful English version,
-   - **photo checks**: places where the photos contradict, cannot confirm, or add to the description,
-   - the **property card** (factory or warehouse, location, land and built-up size, power, ceiling height, tenure, price, feature tags),
-   - three ad drafts in marketable English.
-3. A **draft check** (a LangGraph graph, `app/ai/draft_graph.py`) compares every draft with the card, the description and the photo warnings. Drafts with unsupported claims are rewritten once and checked again; any that still fail are shown with a warning. Earlier versions and the claims found are stored with each draft (`candidates.raw_response.check`).
-4. The review page shows the checks, the editable card, and the drafts in seeded random order. The agent keeps one (and edits it), writes their own, or asks for new drafts, and can optionally rank the drafts from most to least creative (`rankings`).
-5. Publishing writes the decision (`kept`, `wrote_own` or `kept_none`), edit distance and time to decide, updates the card and puts the ad live.
-
-If `LLM_FALLBACK_MODEL` is set, every call moves to that model when the main one fails, and `generation_requests.model_name` records the model(s) that actually answered. `TRACE_TO_LANGSMITH=1` sends traces to LangSmith with photos removed; it is refused outside local development because the privacy notice does not cover it.
-
-**Built for factories, warehouses and land.** The property card and search cover the specs industrial buyers screen on: sale or rent, land area (acres), built-up area, ceiling height, power supply (amps or kVA; kVA is converted to amps for search, 1 kVA ≈ 1.39 A at 415 V three-phase), freehold or leasehold with years left, zoning (light, medium or heavy industrial, commercial, agricultural), 40-ft container access and loading bays. The model reads English, Malay and Chinese descriptions (e.g. *kilang*, *ekar*, *pegangan bebas*).
-
-**Buyer side (`/`)**
-
-- A **filter bar** for the main specs works as a plain form without JavaScript. With JavaScript it updates results in place, is sent with every chat message, and is rewritten from the chat's filters, so the two never disagree.
-- A **map** (Leaflet with OpenStreetMap tiles; Leaflet is served from `/static`, not a CDN) shows every result. Agents set the exact site by dropping a pin on the review page; it starts at the named town's centre (`app/geo.py`).
-- Listing pages have a **photo viewer** (thumbnails, arrows, swipe, keyboard, full-screen), a specifications table, land price per sqft, and a map.
-
-- A chat box takes plain-language queries ("Factory in Shah Alam with 400 amp power and container access", then "freehold only"). The model calls a `search_listings` tool with structured filters (`SearchFilters`); the app runs a parameterised SQL query and shows the results as cards. The model never writes SQL and cannot invent listings.
-- Listing pages hide the agent's phone number behind a button. Impressions, page opens and phone reveals go to `ad_events`, and the agent's dashboard shows the counts per listing.
-
-**Search engine optimisation**
-
-- **Landing pages for real search phrases:** `/factory-for-sale/shah-alam`, `/warehouse-for-rent/port-klang`, `/industrial-land-for-sale/johor` and so on, for every type, deal, town and state with listings. Each has its own title, heading and an intro written from the live listings (count, price range, land sizes, power, tenure, plus the Malay phrase, e.g. *Kilang untuk dijual di Shah Alam*). Empty ones are `noindex`.
-- **Readable listing URLs** (`/listings/<id>/detached-factory-with-600a-power-in-shah-alam`); short or outdated links redirect permanently (301) to the one canonical URL.
-- **Every public page** has a title, meta description, canonical link, Open Graph and Twitter tags (the cover photo is the preview image), and `lang="en-MY"`.
-- **Structured data (JSON-LD):** `RealEstateListing` with price in MYR, address, map coordinates and specs on each listing; `BreadcrumbList` (eligible for breadcrumb rich results); `ItemList` on landing pages; `WebSite` on the home page.
-- **`/sitemap.xml`** lists the home page, every listing (with photos, for Google Images) and every landing page with listings. **`/robots.txt`** blocks `/agent` and `/api/` and points to the sitemap.
-- **Kept out of the index:** filter combinations (`/?min_power=...`, `noindex, follow`), agent pages (`X-Robots-Tag`), empty landing pages.
-- **Speed (Core Web Vitals):** gzip, year-long caching of versioned static files and photos, image dimensions to prevent layout shift, first photo loaded with high priority and the rest lazily, and the map library loaded only on pages with a map.
-- **Internal links:** breadcrumbs, "nearby" and "also in this area" links on landing pages, and a "popular searches" footer.
-
-Set `SITE_URL` to the real domain when deploying, then submit `https://<domain>/sitemap.xml` in Google Search Console.
-
-**Security measures**
-
-Argon2 password hashing with login throttling; signed, HttpOnly, SameSite session cookies, rotated on sign-in; CSRF tokens on every agent form; JSON-only or custom-header buyer endpoints; a strict Content-Security-Policy with no inline scripts; photos decoded and re-encoded on upload, which rejects non-images and strips EXIF (including GPS); unpublished photos served only to their owner; parameterised SQL throughout; agents can only see their own requests.
-
-**Out of scope for the MVP:** ad performance recommendations, the property management portal (payments), the job queue, the reranker.
-
-### Run the website locally
-
-```sh
-cp .env.example .env              # set POSTGRES_PASSWORD, SESSION_SECRET and a model key
-docker compose up -d              # Postgres with all migrations applied
-python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m scripts.seed_demo        # optional: 10 made-up industrial listings + demo login
-.venv/bin/python -m scripts.create_agent --email you@example.com --name "Your Name" --phone "+00 0000 0000"
-.venv/bin/uvicorn app.main:app --reload      # http://localhost:8000
-```
-
-Migrations run only when the database volume is first created. For an existing volume, apply new ones by hand, e.g. `docker compose exec -T db psql -U listing -d listing_ads -f - < db/migrations/V3__industrial_fields.sql`, or rebuild it: `docker compose down -v && docker compose up -d`.
-
-OpenStreetMap's public tile server is fine for development and light use; for a busy production site, switch `MAP_TILES` in `app/main.py` to a commercial tile provider (their usage policy asks heavy users to).
-
-Run the app tests (they create and drop a separate `listing_ads_test` database and use the offline stand-in model, so no API key is needed):
-
-```sh
-.venv/bin/python -m pytest tests
-```
-
-### Deploy to Google Cloud (factory.my)
-
-Cloud Run in Singapore, Cloud SQL Postgres 16, a private Cloud Storage bucket for photos (mounted at `/uploads`), and Secret Manager. Settings are in `deploy/config.sh`; the project needs an open billing account.
-
-```sh
-deploy/setup.sh          # once: services, database, bucket, secrets, permissions
-deploy/deploy.sh         # every release: build, run new migrations, deploy; prints the run.app URL
-deploy/create-agent.sh --email you@example.com --name "Your Name" --phone "+60 ..."
-deploy/domain.sh         # once the domain is registered: verify ownership, map it, print DNS records
-```
-
-Do not run `scripts.seed_demo` against production; its listings are made up.
-
-### Learning map
-
-The code follows the concepts in the [Hugging Face Agents Course](https://huggingface.co/learn/agents-course/unit0/introduction), [LangChain docs](https://docs.langchain.com) and Chip Huyen's *AI Engineering*:
-
-| Concept | Where |
+| Buyer search | Agent review |
 |---|---|
-| Multimodal input (images + text) | `LLMAssistant.write_ads`, `_image_block` |
-| Structured output with a schema | `ListingAnalysis` in `app/ai/schemas.py`, `with_structured_output(..., method="json_schema")` |
-| Tool calling and a bounded tool loop | `LLMAssistant.search_chat`: `create_agent` with `ModelCallLimitMiddleware`, `search_listings` tool |
-| A graph with a loop and a check step | `app/ai/draft_graph.py` (LangGraph `StateGraph`) |
-| Fallback models | `with_fallbacks` (ad writing), `ModelFallbackMiddleware` (search chat) |
-| Tracing with redaction | `app/ai/tracing.py` (LangSmith, `hide_inputs`) |
-| Conversation memory | chat history sent with each turn, capped at 12 messages |
-| Grounding and guarding against hallucination | the model only sees tool results; SQL is built by the app |
-| Prompt injection defence | descriptions and photos marked as data in the prompt; tools are read-only |
-| Logging for evaluation | full prompt, raw response, display order and decisions stored per request |
-| Swappable providers | `LLM_MODEL=provider:model` via `init_chat_model` |
+| ![Home page with a chat search box and filters](docs/images/home.png) | ![Review page with photo checks and an editable property card](docs/images/review.png) |
+
+The screenshots show the local demo in offline mode, with made-up data.
+
+## Try it in one command
+
+Needs Docker. No API key is required: `LLM_MODEL=offline` swaps the model for a rule-based stand-in.
+
+```sh
+docker compose up --build
+```
+
+Open <http://localhost:8000>. The agent side is at `/agent`; sign in with `demo@example.com` / `demo-password-123`.
+The seed script that creates this account is for local use only.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Agent([Real estate agent]) --> Web
+    Buyer([Buyer]) --> Web
+
+    subgraph Web[FastAPI, server-rendered]
+        Routes[app/routes] --> Services[app/services]
+        Routes --> AI[app/ai]
+    end
+
+    AI -->|structured output, tools| LLM[Language model<br/>provider set by config]
+    Services --> PG[(Postgres + pgvector)]
+    AI --> PG
+
+    PG --> Workers[Background workers<br/>video render, market check]
+    PG --> Monitor[scripts/monitor.py<br/>daily report and alerts]
+    PG --> Evals[scripts/eval_ads.py<br/>evals from agent decisions]
+```
+
+It is one deployable with Postgres as its only stateful dependency. That covers listings, photos, videos, the
+LangGraph checkpoints, vector search and the work queues, which is the right trade at this traffic. The limits of that choice
+are written down in [the design decisions](docs/decisions.md).
+
+More detail: [architecture](docs/architecture.md) · [design decisions](docs/decisions.md) ·
+[security](docs/security.md) · [operations](docs/operations.md) · [search engine optimisation](docs/seo.md) ·
+[ad scoring rubric](docs/ad-rubric.md) · [research design](docs/research-design.md)
+
+## Worth a look
+
+If you have ten minutes, these are the parts that carry the most engineering judgement.
+
+| What | Where | Why it is interesting |
+|---|---|---|
+| Draft checking | [`app/ai/draft_graph.py`](app/ai/draft_graph.py) | A LangGraph fan-out checks each draft in its own branch and rewrites only those that fail, with a bounded loop. Model calls are injected as functions, so the graph is tested without a model. |
+| Grounded market comparison | [`app/services/market.py`](app/services/market.py) | The agent is never told the listing's price. Code drops any comparable whose figures are not in the source it cites, and does all the arithmetic. |
+| Bounded search chat | [`app/ai/llm.py`](app/ai/llm.py), [`app/db.py`](app/db.py) | The model calls a typed search tool. It never writes SQL and cannot invent listings. Out-of-scope requests end in a fixed reply. |
+| Postgres as a work queue | [`app/services/video.py`](app/services/video.py) | Render jobs are claimed with a lease, so a crashed worker's job is retried. New photos invalidate old work through a content key. |
+| Prompt change control | [`tests/test_ai.py`](tests/test_ai.py), [`scripts/monitor.py`](scripts/monitor.py) | Prompt text is fingerprinted and pinned to a version. A test fails if a prompt changes without a new version, and the monitor alerts if production ever disagrees. |
+| Constraints in the schema | [`db/migrations`](db/migrations), [`tests/test_schema.sql`](tests/test_schema.sql) | The database itself rejects, for example, a kept draft from a different request. Events are idempotent by source and event ID. |
 
 ## Repository layout
 
 ```
-app/main.py                            web routes (buyer portal and agent pages)
-app/ai/                                schemas, LangChain calls, offline stand-in
-app/db.py, app/images.py, app/security.py
-app/templates/, app/static/            pages, CSS, small JavaScript
-scripts/                               create_agent, seed_demo
-db/migrations/V1__initial_schema.sql   schema (first migration)
-db/migrations/V2__website.sql          logins, property card, photos, analysis
-db/migrations/V3__industrial_fields.sql  power, ceiling, land area, tenure, zoning, container access, map pin
-app/geo.py                             Towns and industrial areas (approximate centres)
-app/static/vendor/leaflet/             Leaflet 1.9.4 (BSD-2), checked against its published SRI hashes
-tests/test_schema.sql                  constraint tests, rolled back after running
-tests/test_app.py                      end-to-end website tests (pytest)
-docker-compose.yml                     local Postgres with the schema applied
-.env.example                           local settings template
-docs/overview.svg                      simple five-step loop
-docs/architecture.png                  detailed system design
+app/
+  main.py        Wiring: middleware, routers, error pages
+  routes/        HTTP only, one module per area of the site
+  services/      Business logic: ad records, tracking, photos, video, market check
+  ai/            Model code: prompts, schemas, graphs, masking, call logging, offline stand-in
+  web/           Shared HTTP helpers: templates, headers, form parsing
+  templates/     Jinja pages (autoescaped)
+  static/        CSS, a small JS file, vendored Leaflet
+  db.py          Connections and the listing search query
+  security.py    Passwords, sessions, CSRF, rate limits
+  seo.py, geo.py Structured data, readable URLs, known places
+db/migrations/   Versioned SQL, applied in order by scripts/migrate.py
+scripts/         Operational commands: migrate, monitor, evals, seed, workers
+tests/           Python tests and SQL constraint tests
+deploy/          Google Cloud scripts (see Status)
+docs/            Design documents
 ```
 
-## Run the schema tests
+## Develop and test
 
-Requires Docker.
+Needs Python 3.12 and Docker. `make` lists every command.
 
 ```sh
-cp .env.example .env                  # then set a password
-docker compose up -d                  # starts Postgres and applies migrations
-docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tests/test_schema.sql'
+make setup   # virtualenv, dependencies, .env
+make db      # Postgres with migrations applied
+make seed    # optional demo data
+make run     # http://localhost:8000
 ```
 
-The tests print one `pass:` line per check and end with `All schema tests passed.` They run inside a transaction and leave no data behind.
+```sh
+make test    # Python tests, then SQL constraint tests
+make lint    # ruff check and format
+```
 
-Migrations run only when the database volume is first created. To rebuild from scratch: `docker compose down -v && docker compose up -d`.
+The tests run against real Postgres and pgvector in a throwaway database, using the offline model, so they need no
+key and no network. There are 99 Python tests, including end-to-end journeys through the web layer, real ffmpeg renders,
+and fake models for the provider fallback and tool loop. CI runs them on every push to `main` and every pull request, along with the lint
+checks, migrations against an empty database, the constraint tests and a Docker image build.
 
-## Schema decisions
+To use a real model, set `LLM_MODEL=provider:model` and the matching key in `.env`. See [`.env.example`](.env.example).
 
-1. **Rejected drafts are stored, not discarded.** Without them there is no way to tell whether real estate agents kept the draft they would rank highest.
-2. **Display position and shuffle seed are logged.** This separates "real estate agents keep the best draft" from "real estate agents keep whatever appears first."
-3. **Every decision is explicit:** `kept`, `kept_none` or `wrote_own`. A missing decision row means the request was abandoned. The database guarantees that a kept draft and any rankings belong to the same request.
-4. **Events cannot double-count.** Events are keyed by their source and event ID, and daily rollups are upserted when a day is recomputed.
-5. **The full prompt and raw model response are stored.** LLM output is not reproducible, so a version label alone cannot show what the real estate agent saw.
-6. **No buyer personal data in these tables.** Inquiries are counted here; contact details stay in the CRM.
-7. **Listings end explicitly.** `outcomes.status` is `sold`, `withdrawn` or `expired`; a price is required only for sales. No outcome row means the listing is still active.
+**Stack:** FastAPI, Jinja, Postgres 16, pgvector, psycopg, LangChain, LangGraph, Deep Agents, Gemini, ffmpeg, Leaflet,
+Docker, Render.
 
-## Open questions
+## Status
 
-- **Phone reveals as a signal.** The real estate agent's phone number is hidden until a buyer clicks to reveal it, and each reveal is logged against the ad. A reveal shows interest but does not confirm that a call happened. Is that good enough, or should calls be confirmed later?
-- **Showing buyers different drafts.** Because we own the portal, different buyers could be shown different drafts of the same listing at random. That would test directly whether the draft the real estate agent kept is the one buyers respond to most. It needs the real estate agents' agreement and ethics approval first.
-- **Late outcomes.** A sale lands weeks after the ad. How should late events join back to the request, and should training wait for them?
-- **Model hosting.** Drafts for one listing share a long prompt. At this scale, is self-hosted serving (for example vLLM with prefix caching) worth it compared with an API?
+Plainly, what is and is not proven in production:
 
-## Data rules
+| Area | State |
+|---|---|
+| Portal, agent flow, search chat, SEO pages | Live on corpbiz.my, on Render's free plan |
+| Video tours | Deployed and off by default. No production render has been observed yet. |
+| Market check | Deployed but switched off. Needs search quota. Tested with sample search results, not real ones. |
+| Google Cloud scripts in `deploy/` | Written but never run. Render is the real deployment. |
+| Rate limits | Per process, in memory. See [the known limits](docs/security.md#known-limits). |
+| Reranker and buyer experiments | Designed, not built. See [the research design](docs/research-design.md). |
 
-- Never commit real client, buyer or listing data. Tests use made-up records only.
-- The portal holds buyer data, so privacy law applies to it directly. Buyer contact details stay in the CRM, never in the research tables.
-- Secrets live in `.env`, which is git-ignored.
-- Never edit an applied migration. Add `V2__...`, `V3__...` instead.
+## Licence
+
+The source is public so that it can be read and evaluated. No open-source licence is granted; all rights reserved.
+Leaflet, in `app/static/vendor/leaflet`, is BSD-2-Clause.

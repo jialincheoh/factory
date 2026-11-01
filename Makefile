@@ -7,7 +7,7 @@ PYTHON := .venv/bin/python
 RUFF := .venv/bin/ruff
 
 help: ## List the commands
-	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
+	@grep -hE '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
 
 setup: ## Create .venv, install dependencies and create .env if missing
 	python3.12 -m venv .venv

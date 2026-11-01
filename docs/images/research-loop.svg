@@ -9,7 +9,7 @@
       <g font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" text-anchor="middle" fill="#1b2129">
         <rect x="20"  y="40" width="180" height="80" rx="10" fill="#f6f7f9" stroke="#1b2129"/>
         <text x="110" y="74" font-size="17" font-weight="700">1. AI writes</text>
-        <text x="110" y="98" font-size="14" fill="#5b6573">5 ad drafts</text>
+        <text x="110" y="98" font-size="14" fill="#5b6573">3 ad drafts</text>
 
         <rect x="340" y="40" width="180" height="80" rx="10" fill="#f6f7f9" stroke="#1b2129"/>
         <text x="430" y="74" font-size="17" font-weight="700">2. Agent keeps one</text>
